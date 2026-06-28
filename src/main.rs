@@ -3,6 +3,23 @@ pub mod biology;
 pub mod ui;
 pub mod stats;
 
+#[cfg(test)]
+mod tests {
+    use super::ui::app::LifeSimApp;
+
+    #[test]
+    fn test_app_creation() {
+        let app = LifeSimApp::default();
+        assert!(app.world.chunks.len() > 0);
+    }
+
+    #[test]
+    fn test_app_tick() {
+        let mut app = LifeSimApp::default();
+        app.world.tick();
+    }
+}
+
 use eframe::egui;
 
 fn main() -> eframe::Result<()> {
