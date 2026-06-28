@@ -147,6 +147,9 @@ fn draw_chunk_tiles(
             if rect.intersects(tile_rect) {
                 let tile = &chunk.tiles[ty * CHUNK_SIZE + tx];
                 painter.rect_filled(tile_rect, 0.0, get_tile_color(app, tile));
+                if app.camera_zoom > 0.8 {
+                    painter.rect_stroke(tile_rect, 0.0, egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 20)));
+                }
             }
         }
     }

@@ -9,7 +9,8 @@ mod tests {
 
     #[test]
     fn test_app_creation() {
-        let app = LifeSimApp::default();
+        let mut app = LifeSimApp::default();
+        app.start_simulation();
         assert!(app.world.chunks.len() > 0);
     }
 

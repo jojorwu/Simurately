@@ -15,7 +15,14 @@ use crate::ui::settings::GameSettings;
 use crate::ui::world_view;
 use crate::ui::panels;
 
+#[derive(PartialEq)]
+pub enum AppState {
+    Menu,
+    Simulation,
+}
+
 pub struct LifeSimApp {
+    pub(crate) state: AppState,
     pub(crate) world: World,
     pub(crate) paused: bool,
     pub(crate) ticks_per_frame: usize,
@@ -32,42 +39,16 @@ pub struct LifeSimApp {
     pub(crate) selected_entity_id: Option<u64>,
     pub(crate) bottom_tab: BottomTab,
     pub(crate) settings: GameSettings,
+
+    // Настройки меню
+    pub(crate) world_size_chunks: i32,
 }
 
 impl Default for LifeSimApp {
     fn default() -> Self {
-        let mut world = World::new();
-        // Генерируем 3x3 чанка
-        for cx in -1..=1 {
-            for cy in -1..=1 {
-                world.add_chunk(cx, cy);
-            }
-        }
-
-        let mut rng = rand::thread_rng();
-
-        // Начальный биом
-        for _ in 0..80 {
-            world.spawn_plant(PlantType::Grass, Vec2::new(rng.gen_range(-500.0..500.0), rng.gen_range(-500.0..500.0)), None);
-        }
-        for _ in 0..25 {
-            world.spawn_plant(PlantType::Shrub, Vec2::new(rng.gen_range(-400.0..400.0), rng.gen_range(-400.0..400.0)), None);
-        }
-        for _ in 0..12 {
-            world.spawn_plant(PlantType::Tree, Vec2::new(rng.gen_range(-300.0..300.0), rng.gen_range(-300.0..300.0)), None);
-        }
-        for _ in 0..10 {
-            world.spawn_plant(PlantType::Mushroom, Vec2::new(rng.gen_range(-200.0..200.0), rng.gen_range(-200.0..200.0)), None);
-        }
-        for _ in 0..35 {
-            world.spawn_animal(AnimalType::Insect, Vec2::new(rng.gen_range(-400.0..400.0), rng.gen_range(-400.0..400.0)), None);
-        }
-        for _ in 0..20 {
-            world.spawn_animal(AnimalType::Fish, Vec2::new(rng.gen_range(-400.0..400.0), rng.gen_range(-400.0..400.0)), None);
-        }
-
         Self {
-            world,
+            state: AppState::Menu,
+            world: World::new(),
             paused: false,
             ticks_per_frame: 2,
             camera_offset: Vec2::ZERO,
@@ -77,6 +58,7 @@ impl Default for LifeSimApp {
             selected_entity_id: None,
             bottom_tab: BottomTab::Populations,
             settings: GameSettings::default(),
+            world_size_chunks: 3,
         }
     }
 }
@@ -90,6 +72,18 @@ impl LifeSimApp {
         style.visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(22, 28, 35);
         cc.egui_ctx.set_style(style);
         Self::default()
+    }
+
+    pub(crate) fn start_simulation(&mut self) {
+        let mut world = World::new();
+        let half_size = self.world_size_chunks / 2;
+        for cx in -half_size..=(self.world_size_chunks - half_size - 1) {
+            for cy in -half_size..=(self.world_size_chunks - half_size - 1) {
+                world.add_chunk(cx, cy);
+            }
+        }
+        self.world = world;
+        self.state = AppState::Simulation;
     }
 
     pub(crate) fn apply_tool(&mut self, world_pos: Vec2) {
@@ -160,6 +154,36 @@ impl LifeSimApp {
 
 impl eframe::App for LifeSimApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        match self.state {
+            AppState::Menu => self.draw_menu(ctx),
+            AppState::Simulation => self.draw_simulation(ctx),
+        }
+    }
+}
+
+impl LifeSimApp {
+    fn draw_menu(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(100.0);
+                ui.heading(egui::RichText::new("🧬 Эволюционная Симуляция v2").size(40.0));
+                ui.add_space(50.0);
+
+                ui.group(|ui| {
+                    ui.set_width(300.0);
+                    ui.label("Настройки мира:");
+                    ui.add(egui::Slider::new(&mut self.world_size_chunks, 1..=10).text("Размер (чанки)"));
+                    ui.add_space(20.0);
+
+                    if ui.button(egui::RichText::new("🚀 Запустить симуляцию").size(20.0)).clicked() {
+                        self.start_simulation();
+                    }
+                });
+            });
+        });
+    }
+
+    fn draw_simulation(&mut self, ctx: &egui::Context) {
         if !self.paused {
             for _ in 0..self.ticks_per_frame {
                 self.world.tick();
