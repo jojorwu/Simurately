@@ -1,0 +1,13 @@
+[package]
+name = "life_sim"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rayon = "1.9.0"
+glam = { version = "0.27.0", features = ["serde"] }
+serde = { version = "1.0.200", features = ["derive"] }
+rand = "0.8.5"
+eframe = "0.27.2"
+egui_plot = "0.27.2"
+

@@ -1,0 +1,193 @@
+use serde::{Deserialize, Serialize};
+use super::genome::Genome;
+use rand::Rng;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlantType {
+    Grass,
+    Shrub,
+    Tree,
+    Mushroom, // Растёт в тёмных / влажных местах, питает животных
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Plant {
+    pub id: u64,
+    pub plant_type: PlantType,
+    pub genome: Genome,
+    pub position: (f32, f32),
+    pub energy: f32,
+    pub health: f32,
+    pub age: u32,
+    pub leaf_size: f32,
+    pub root_depth: f32,
+    pub is_poisonous: bool, // мутация: растение ядовитое — животные теряют здоровье при поедании
+}
+
+impl Plant {
+    pub fn new(id: u64, plant_type: PlantType, genome: Genome, position: (f32, f32)) -> Self {
+        let initial_energy = match plant_type {
+            PlantType::Grass => 25.0,
+            PlantType::Shrub => 60.0,
+            PlantType::Tree => 200.0,
+            PlantType::Mushroom => 40.0,
+        };
+
+        let leaf_size = genome.size * 0.7;
+        let root_depth = match plant_type {
+            PlantType::Grass => 0.15 * genome.size,
+            PlantType::Shrub => 0.7 * genome.size,
+            PlantType::Tree => 2.0 * genome.size,
+            PlantType::Mushroom => 0.1 * genome.size,
+        };
+
+        // Ядовитость: редкая мутация (5%)
+        let is_poisonous = rand::thread_rng().gen_range(0.0f32..1.0) < 0.05;
+
+        Self {
+            id,
+            plant_type,
+            genome,
+            position,
+            energy: initial_energy,
+            health: 100.0,
+            age: 0,
+            leaf_size,
+            root_depth,
+            is_poisonous,
+        }
+    }
+
+    /// Обновление состояния растения.
+    /// Возвращает `(Option<(seed_x, seed_y, PlantType, ChildGenome)>, consumed_soil_energy)`
+    pub fn update(
+        &mut self,
+        soil_energy: f32,
+        temperature: f32,    // -1.0 (очень холодно) .. 1.0 (очень жарко)
+        humidity: f32,       // 0.0 (сухо) .. 1.0 (влажно)
+        sunlight: f32,       // 0.0 (ночь/буря) .. 1.0 (ясно)
+    ) -> (Option<(f32, f32, PlantType, Genome)>, f32) {
+        self.age += 1;
+
+        // --- Фотосинтез: базовый прирост от солнца ---
+        let photosynthesis = sunlight * self.leaf_size * match self.plant_type {
+            PlantType::Grass => 0.4,
+            PlantType::Shrub => 0.25,
+            PlantType::Tree => 0.12,
+            PlantType::Mushroom => 0.0, // грибы не фотосинтезируют
+        };
+
+        // --- Поглощение влаги / почвенной энергии ---
+        let mut absorption_mult = self.leaf_size * (0.5 + humidity * 0.5);
+        // Грибы растут при высокой влажности
+        if self.plant_type == PlantType::Mushroom {
+            absorption_mult = humidity * 1.5 * (1.0 - sunlight * 0.5);
+        }
+        // При засухе (влажность < 0.15) корни спасают
+        if humidity < 0.15 {
+            absorption_mult *= self.root_depth * 0.3;
+        }
+        // В жару без влаги — плохо
+        if temperature > 0.7 && humidity < 0.2 {
+            absorption_mult *= 0.2;
+            if self.root_depth < 0.5 {
+                self.health -= 0.4;
+            }
+        }
+
+        let growth_speed = match self.plant_type {
+            PlantType::Grass => 0.40,
+            PlantType::Shrub => 0.20,
+            PlantType::Tree => 0.07,
+            PlantType::Mushroom => 0.35,
+        };
+        let desired_absorption = (soil_energy * growth_speed * absorption_mult).min(10.0);
+        let actual_absorption = desired_absorption.min(soil_energy).max(0.0);
+
+        // Затраты на поддержание жизни
+        let base_cost = 0.05 * self.genome.metabolism * self.genome.size;
+
+        self.energy += photosynthesis + actual_absorption - base_cost;
+        self.energy = self.energy.max(0.0);
+
+        // Холод портит здоровье (особенно грибам всё равно, они выживают)
+        if temperature < -0.5 && self.plant_type != PlantType::Mushroom {
+            self.health -= 0.3;
+        }
+
+        // Восстановление здоровья при хорошей энергии
+        if self.energy > 20.0 && self.health < 100.0 {
+            self.health = (self.health + 0.4).min(100.0);
+            self.energy -= 0.1;
+        }
+
+        // Нехватка энергии → потеря здоровья
+        if self.energy <= 0.0 {
+            self.health -= 1.5;
+        }
+
+        // --- Размножение семенами ---
+        let repro_threshold = match self.plant_type {
+            PlantType::Grass => self.genome.reproduction_threshold * 0.30,
+            PlantType::Shrub => self.genome.reproduction_threshold * 0.65,
+            PlantType::Tree => self.genome.reproduction_threshold * 1.2,
+            PlantType::Mushroom => self.genome.reproduction_threshold * 0.45,
+        };
+
+        let mut spawned_seed = None;
+        if self.energy > repro_threshold && self.health > 65.0 {
+            let seed_cost = repro_threshold * 0.40;
+            self.energy -= seed_cost;
+
+            let mut rng = rand::thread_rng();
+            let spread_dist = match self.plant_type {
+                PlantType::Grass => rng.gen_range(5.0..30.0),
+                PlantType::Shrub => rng.gen_range(15.0..55.0),
+                PlantType::Tree => rng.gen_range(40.0..110.0),
+                PlantType::Mushroom => rng.gen_range(10.0..40.0),
+            };
+            let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+            let seed_x = self.position.0 + angle.cos() * spread_dist;
+            let seed_y = self.position.1 + angle.sin() * spread_dist;
+
+            // Редкая мутация смены типа растения (ветка → дерево, трава → кустарник и т.д.)
+            let child_type = if rng.gen_range(0.0f32..1.0) < 0.02 {
+                match self.plant_type {
+                    PlantType::Grass => PlantType::Shrub,
+                    PlantType::Shrub => if rng.gen_bool(0.5) { PlantType::Tree } else { PlantType::Grass },
+                    PlantType::Tree => PlantType::Shrub,
+                    PlantType::Mushroom => PlantType::Mushroom,
+                }
+            } else {
+                self.plant_type
+            };
+
+            let mut child_genome = self.genome;
+            child_genome.mutate_in_place(0.04);
+
+            spawned_seed = Some((seed_x, seed_y, child_type, child_genome));
+        }
+
+        (spawned_seed, actual_absorption)
+    }
+
+    pub fn is_dead(&self) -> bool {
+        let max_age = match self.plant_type {
+            PlantType::Grass => 300,
+            PlantType::Shrub => 1000,
+            PlantType::Tree => 5000,
+            PlantType::Mushroom => 200,
+        };
+        self.health <= 0.0 || self.age >= max_age
+    }
+
+    /// Питательность для поедания животными
+    pub fn nutritional_value(&self) -> f32 {
+        match self.plant_type {
+            PlantType::Grass => 8.0,
+            PlantType::Shrub => 18.0,
+            PlantType::Tree => 35.0,
+            PlantType::Mushroom => 25.0,
+        }
+    }
+}
