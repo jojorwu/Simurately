@@ -151,7 +151,7 @@ impl Climate {
     }
 
     /// Обновление климата в тик
-    pub fn tick(&mut self, tick: u64) -> Vec<WorldEvent> {
+    pub fn tick(&mut self, _tick: u64) -> Vec<WorldEvent> {
         let mut events = Vec::new();
         self.duration_timer += 1;
         self.season_timer += 1;
