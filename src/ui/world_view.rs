@@ -4,8 +4,10 @@ use rand::Rng;
 
 use crate::ui::app::LifeSimApp;
 use crate::ui::tool::Tool;
-use crate::biology::{PlantType, AnimalType, AiState};
-use crate::engine::{TileType, CHUNK_WORLD_SIZE, TILE_SIZE, CHUNK_SIZE};
+use crate::biology::plant::PlantType;
+use crate::biology::animal::{AnimalType, AiState};
+use crate::engine::tile::TileType;
+use crate::engine::chunk::{CHUNK_WORLD_SIZE, TILE_SIZE, CHUNK_SIZE};
 use crate::engine::climate::WeatherType;
 
 pub fn handle_camera_input(app: &mut LifeSimApp, response: &egui::Response, ui: &egui::Ui) {

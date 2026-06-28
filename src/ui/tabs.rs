@@ -1,8 +1,9 @@
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints, Legend};
 
-use crate::biology::{PlantType, AnimalType, AiState};
-use crate::render::app::LifeSimApp;
+use crate::biology::plant::PlantType;
+use crate::biology::animal::{AnimalType, AiState};
+use crate::ui::app::LifeSimApp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BottomTab {

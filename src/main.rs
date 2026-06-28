@@ -1,7 +1,7 @@
-mod engine;
-mod biology;
-mod engine;
-mod stats;
+pub mod engine;
+pub mod biology;
+pub mod ui;
+pub mod stats;
 
 use eframe::egui;
 
@@ -17,6 +17,6 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Life Simulation v2",
         options,
-        Box::new(|cc| Box::new(ui::LifeSimApp::new(cc)) as Box<dyn eframe::App>),
+        Box::new(|cc| Box::new(ui::app::LifeSimApp::new(cc)) as Box<dyn eframe::App>),
     )
 }

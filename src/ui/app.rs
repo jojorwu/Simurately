@@ -3,16 +3,17 @@ use eframe::egui;
 use glam::Vec2;
 use rand::Rng;
 
-use crate::engine::{
-    World, TileType, CHUNK_WORLD_SIZE, TILE_SIZE, CHUNK_SIZE,
-};
-use crate::biology::{PlantType, AnimalType};
+use crate::engine::world::World;
+use crate::engine::tile::TileType;
+use crate::engine::chunk::{CHUNK_WORLD_SIZE, TILE_SIZE, CHUNK_SIZE};
+use crate::biology::plant::PlantType;
+use crate::biology::animal::AnimalType;
 
 use crate::ui::tool::Tool;
-use crate::render::ui::tabs::BottomTab;
-use crate::render::settings::GameSettings;
-use crate::render::world_view;
-use crate::render::ui::panels;
+use crate::ui::tabs::BottomTab;
+use crate::ui::settings::GameSettings;
+use crate::ui::world_view;
+use crate::ui::panels;
 
 pub struct LifeSimApp {
     pub(crate) world: World,

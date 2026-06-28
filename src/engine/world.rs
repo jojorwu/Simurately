@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::collections::HashMap;
 use rayon::prelude::*;
@@ -6,8 +5,8 @@ use glam::Vec2;
 use rand::Rng;
 
 use crate::biology::genome::Genome;
-use crate::biology::plant::{Plant, PlantType};
-use crate::biology::animal::{Animal, AnimalType};
+use crate::biology::plant::PlantType;
+use crate::biology::animal::AnimalType;
 use crate::engine::tile::TileType;
 use crate::engine::climate::{Climate, WeatherType};
 use crate::engine::events::WorldEvent;
@@ -118,7 +117,7 @@ impl World {
         if let Some(chunk) = self.chunks.get_mut(&(cx, cy)) {
             let id = self.next_entity_id.fetch_add(1, Ordering::Relaxed);
             let gen_data = genome.unwrap_or_else(Genome::random);
-            chunk.plants.push(Plant::new(id, plant_type, gen_data, (pos.x, pos.y)));
+            chunk.plants.push(crate::biology::plant::Plant::new(id, plant_type, gen_data, (pos.x, pos.y)));
         }
     }
 
@@ -132,7 +131,7 @@ impl World {
         });
         let spec_id = self.register_or_match_species(&mut animal_genome, animal_type);
         animal_genome.species_id = spec_id;
-        let animal = Animal::new(id, animal_type, animal_genome, pos);
+        let animal = crate::biology::animal::Animal::new(id, animal_type, animal_genome, pos);
         if let Some(chunk) = self.chunks.get_mut(&(cx, cy)) {
             chunk.animals.push(animal);
         }
@@ -192,11 +191,11 @@ impl World {
 
         // 4. Сбор результатов
         let mut seeds_buf: Vec<(f32, f32, PlantType, Genome)> = Vec::new();
-        let mut animals_buf: Vec<Animal> = Vec::new();
+        let mut animals_buf: Vec<crate::biology::animal::Animal> = Vec::new();
         let mut died_count = 0u64;
         
         // Группировка результатов по чанкам для пакетной обработки
-        let mut animal_batches: std::collections::HashMap<(i32, i32), Vec<Animal>> = std::collections::HashMap::new();
+        let mut animal_batches: std::collections::HashMap<(i32, i32), Vec<crate::biology::animal::Animal>> = std::collections::HashMap::new();
         let mut seed_batches: std::collections::HashMap<(i32, i32), Vec<(f32, f32, PlantType, Genome)>> = std::collections::HashMap::new();
 
         for (_, res) in all_results {
@@ -251,7 +250,7 @@ impl World {
                     };
                     if can_grow {
                         let id = self.next_entity_id.fetch_add(1, Ordering::Relaxed);
-                        chunk.plants.push(Plant::new(id, ptype, genome, (sx, sy)));
+                        chunk.plants.push(crate::biology::plant::Plant::new(id, ptype, genome, (sx, sy)));
                     }
                 }
             }
