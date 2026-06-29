@@ -171,24 +171,37 @@ impl World {
         let id_gen = &self.next_entity_id;
         let bucket_index = (self.tick_count % 4) as usize;
 
-        self.chunks.iter_mut().par_bridge().map(|(coords, chunk)| {
+        self.chunks.par_iter_mut().map(|(coords, chunk)| {
             let res = chunk.tick(mutation_rate, id_gen, &climate_snapshot, self.tick_count, bucket_index);
             (*coords, res)
         }).collect()
     }
 
     fn process_tick_results(&mut self, results: Vec<((i32, i32), ChunkTickResult)>) {
-        let mut animals_to_spawn = Vec::new();
-        let mut seeds_to_spawn = Vec::new();
-        let mut died_count = 0u64;
+        let (animals_to_spawn, seeds_to_spawn, died_count, events) = results.into_par_iter()
+            .fold(
+                || (Vec::new(), Vec::new(), 0u64, Vec::new()),
+                |(mut a, mut s, mut d, mut e), (_, res)| {
+                    a.extend(res.migrated_animals);
+                    a.extend(res.spawned_animals);
+                    s.extend(res.spawned_seeds);
+                    d += res.died_animal_ids.len() as u64;
+                    e.extend(res.events);
+                    (a, s, d, e)
+                }
+            )
+            .reduce(
+                || (Vec::new(), Vec::new(), 0u64, Vec::new()),
+                |(mut a1, mut s1, mut d1, mut e1), (a2, s2, d2, e2)| {
+                    a1.extend(a2);
+                    s1.extend(s2);
+                    d1 += d2;
+                    e1.extend(e2);
+                    (a1, s1, d1, e1)
+                }
+            );
 
-        for (_, res) in results {
-            animals_to_spawn.extend(res.migrated_animals);
-            animals_to_spawn.extend(res.spawned_animals);
-            seeds_to_spawn.extend(res.spawned_seeds);
-            died_count += res.died_animal_ids.len() as u64;
-            for ev in res.events { self.log(ev); }
-        }
+        for ev in events { self.log(ev); }
         self.stats.total_deaths += died_count;
 
         for mut animal in animals_to_spawn {

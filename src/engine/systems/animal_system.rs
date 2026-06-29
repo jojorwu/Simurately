@@ -26,8 +26,9 @@ pub fn update_animals(
     let chunk_left = chunk_id.0 as f32 * CHUNK_WORLD_SIZE;
     let chunk_top = chunk_id.1 as f32 * CHUNK_WORLD_SIZE;
 
-    let mut updates = Vec::with_capacity(animals.len());
-    for (i, mut animal) in std::mem::take(animals).into_iter().enumerate() {
+    use rayon::prelude::*;
+
+    let updates: Vec<_> = std::mem::take(animals).into_par_iter().enumerate().map(|(i, mut animal)| {
         let gx = ((animal.position.x - chunk_left) / GRID_CELL_SIZE).floor() as i32;
         let gy = ((animal.position.y - chunk_top) / GRID_CELL_SIZE).floor() as i32;
 
@@ -49,10 +50,12 @@ pub fn update_animals(
         let filtered_animals: Vec<_> = nearby_animal_indices.into_iter().filter(|&&idx| idx != i).map(|&idx| animal_snaps[idx]).collect();
         let filtered_plants: Vec<_> = nearby_plant_indices.into_iter().map(|&idx| plant_snaps[idx]).collect();
 
-        let tile = &tiles[world_to_tile_index(animal.position, chunk_id)];
-        let res = animal.update(tile.tile_type == TileType::Water, &filtered_plants, &filtered_animals, ctx.climate.temperature, ctx.climate.humidity, ctx.climate.wind_speed);
-        updates.push((animal, res));
-    }
+        let tile_idx = world_to_tile_index(animal.position, chunk_id);
+        let is_water = tiles[tile_idx].tile_type == TileType::Water;
+
+        let res = animal.update(is_water, &filtered_plants, &filtered_animals, ctx.climate.temperature, ctx.climate.humidity, ctx.climate.wind_speed);
+        (animal, res)
+    }).collect();
 
     let eaten_ids = HashSet::new();
     apply_animal_actions(updates, plants, eaten_ids, chunk_id, ctx, result, animals);

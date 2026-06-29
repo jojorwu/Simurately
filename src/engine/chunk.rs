@@ -65,10 +65,14 @@ impl Chunk {
     }
 
     fn update_spatial_grids(&mut self) {
-        for cell in self.plant_spatial_grid.iter_mut() { cell.clear(); }
-        for cell in self.animal_spatial_grid.iter_mut() { cell.clear(); }
+        use rayon::prelude::*;
+        self.plant_spatial_grid.par_iter_mut().for_each(|cell| cell.clear());
+        self.animal_spatial_grid.par_iter_mut().for_each(|cell| cell.clear());
+
         let left = self.id.0 as f32 * CHUNK_WORLD_SIZE;
         let top = self.id.1 as f32 * CHUNK_WORLD_SIZE;
+
+        // Для растений (обычно их много)
         for (i, p) in self.plants.iter().enumerate() {
             let gx = ((p.position.x - left) / GRID_CELL_SIZE).floor() as i32;
             let gy = ((p.position.y - top) / GRID_CELL_SIZE).floor() as i32;
@@ -76,6 +80,7 @@ impl Chunk {
                 self.plant_spatial_grid[(gy * GRID_WIDTH as i32 + gx) as usize].push(i);
             }
         }
+        // Для животных
         for (i, a) in self.animals.iter().enumerate() {
             let gx = ((a.position.x - left) / GRID_CELL_SIZE).floor() as i32;
             let gy = ((a.position.y - top) / GRID_CELL_SIZE).floor() as i32;
