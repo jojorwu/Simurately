@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::genome::Genome;
 use glam::Vec2;
 use rand::Rng;
+use crate::engine::config::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AnimalType {
@@ -174,21 +175,21 @@ impl Animal {
         };
         if wrong_terrain {
             let adaptation = if is_water_tile { self.genome.aquatic_adaptation } else { 1.0 - self.genome.aquatic_adaptation };
-            self.health -= 2.5 * (1.0 - adaptation);
+            self.health -= WRONG_TERRAIN_HEALTH_LOSS * (1.0 - adaptation);
         }
     }
 
     fn handle_starvation_and_regen(&mut self) {
         if self.energy <= 0.0 {
             self.energy = 0.0;
-            self.health -= 1.0;
+            self.health -= STARVATION_HEALTH_LOSS;
         }
 
         let max_hp = self.genome.max_health();
-        if self.energy > self.genome.reproduction_threshold * 0.5 && self.health < max_hp {
-            let regen = 0.4 * self.genome.digestion_efficiency;
+        if self.energy > self.genome.reproduction_threshold * REGEN_ENERGY_THRESHOLD_FACTOR && self.health < max_hp {
+            let regen = REGEN_BASE_RATE * self.genome.digestion_efficiency;
             self.health = (self.health + regen).min(max_hp);
-            self.energy -= regen * 0.3;
+            self.energy -= regen * REGEN_ENERGY_COST_FACTOR;
         }
     }
 
@@ -197,50 +198,45 @@ impl Animal {
         plants: &[(usize, Vec2, f32, bool)],
         nearby_animals: &[(u64, Vec2, AnimalType, f32, f32, f32, f32, u32, f32)],
     ) -> SensoryData {
-        let vision_sq = self.genome.vision_range * self.genome.vision_range;
-        let mut nearest_predator = None;
-        let mut min_pred_d2 = vision_sq;
-        let mut nearest_prey = None;
-        let mut min_prey_d2 = vision_sq;
-        let mut nearest_mate = None;
-        let mut min_mate_d2 = vision_sq;
+        let vision = self.genome.vision_range;
 
-        for (id, pos, t, size, diet, aggression, energy, spec_id, _) in nearby_animals {
-            if *id == self.id { continue; }
-            let d2 = pos.distance_squared(self.position);
-            if d2 >= vision_sq { continue; }
+        let nearest_predator = nearby_animals.iter()
+            .filter(|(id, pos, t, size, diet, aggression, _, _, _)| {
+                *id != self.id && pos.distance(self.position) < vision && self.is_threatened_by(*t, *size, *diet, *aggression)
+            })
+            .map(|(_, pos, _, _, _, _, _, _, _)| (*pos, pos.distance(self.position)))
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-            if d2 < min_pred_d2 && self.is_threatened_by(*t, *size, *diet, *aggression) {
-                min_pred_d2 = d2;
-                nearest_predator = Some((*pos, d2.sqrt()));
-            }
-            if d2 < min_prey_d2 && self.genome.diet > 0.4 && self.can_eat_animal(*t, *size) && *energy > 0.0 {
-                min_prey_d2 = d2;
-                nearest_prey = Some((*id, *pos, d2.sqrt()));
-            }
-            if d2 < min_mate_d2 && *t == self.animal_type && *spec_id == self.genome.species_id && *energy > self.genome.reproduction_threshold * 0.6 {
-                min_mate_d2 = d2;
-                nearest_mate = Some((*id, *pos, d2.sqrt()));
-            }
-        }
+        let nearest_prey = if self.genome.diet > 0.4 {
+            nearby_animals.iter()
+                .filter(|(id, pos, t, size, _, _, prey_energy, _, _)| {
+                    *id != self.id && pos.distance(self.position) < vision && self.can_eat_animal(*t, *size) && *prey_energy > 0.0
+                })
+                .map(|(id, pos, _, _, _, _, _, _, _)| (*id, *pos, pos.distance(self.position)))
+                .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+        } else { None };
 
         let nearest_plant = if self.genome.diet < 0.7 {
             plants.iter()
-                .filter_map(|(idx, pos, energy, _)| {
-                    let d2 = pos.distance_squared(self.position);
-                    if d2 < vision_sq && *energy > 5.0 { Some((*idx, *pos, d2)) } else { None }
-                })
+                .filter(|(_, pos, energy, _)| pos.distance(self.position) < vision && *energy > 5.0)
+                .map(|(idx, pos, energy, _)| (*idx, *pos, pos.distance(self.position)))
                 .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
-                .map(|(idx, pos, d2)| (idx, pos, d2.sqrt()))
         } else { None };
 
+        let nearest_mate = nearby_animals.iter()
+            .filter(|(id, pos, t, _, _, _, mate_energy, spec_id, _)| {
+                *id != self.id && *t == self.animal_type && *spec_id == self.genome.species_id && pos.distance(self.position) < vision && *mate_energy > self.genome.reproduction_threshold * 0.6
+            })
+            .map(|(id, pos, _, _, _, _, _, _, _)| (*id, *pos, pos.distance(self.position)))
+            .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+
         let flock_center = if self.genome.sociality > 0.5 {
-            let (sum, count) = nearby_animals.iter()
+            let neighbors: Vec<Vec2> = nearby_animals.iter()
                 .filter(|(id, pos, t, _, _, _, _, spec_id, _)| {
-                    *id != self.id && *t == self.animal_type && *spec_id == self.genome.species_id && pos.distance_squared(self.position) < vision_sq * 0.64
+                    *id != self.id && *t == self.animal_type && *spec_id == self.genome.species_id && pos.distance(self.position) < vision * 0.8
                 })
-                .fold((Vec2::ZERO, 0), |(s, c), (_, pos, _, _, _, _, _, _, _)| (s + *pos, c + 1));
-            if count >= 2 { Some(sum / count as f32) } else { None }
+                .map(|(_, pos, _, _, _, _, _, _, _)| *pos).collect();
+            if neighbors.len() >= 2 { Some(neighbors.iter().sum::<Vec2>() / neighbors.len() as f32) } else { None }
         } else { None };
 
         SensoryData { nearest_predator, nearest_prey, nearest_plant, nearest_mate, flock_center }
@@ -256,7 +252,7 @@ impl Animal {
             let threat_power = 1.0;
             let my_power = self.genome.size * self.genome.speed;
             let danger_ratio = threat_power / (my_power * self.genome.fear_threshold).max(0.1);
-            if danger_ratio > 0.6 || pred_dist < 60.0 {
+            if danger_ratio > 0.6 || pred_dist < FLEE_DIST_THRESHOLD {
                 self.current_state = AiState::Flee;
                 self.memory_threat_pos = Some(pred_pos);
                 steer = (self.position - pred_pos).normalize_or_zero() * self.genome.speed - self.velocity;
@@ -270,7 +266,7 @@ impl Animal {
         if steer == Vec2::ZERO && self.genome.diet > 0.5 && hunger_ratio < 1.5 {
             if let Some((prey_id, prey_pos, prey_dist)) = sensors.nearest_prey {
                 self.current_state = AiState::Hunt;
-                if prey_dist < self.genome.size * 8.0 + 10.0 { actions.want_to_attack = Some(prey_id); }
+                if prey_dist < self.genome.size * ATTACK_RANGE_SIZE_MULT + ATTACK_RANGE_BASE { actions.want_to_attack = Some(prey_id); }
                 else { steer = self.seek(prey_pos); }
             }
         }
@@ -281,7 +277,7 @@ impl Animal {
             if let Some((plant_idx, plant_pos)) = food_target {
                 self.current_state = AiState::Forage;
                 if plant_idx != usize::MAX { self.memory_food_pos = Some(plant_pos); }
-                if self.position.distance(plant_pos) < self.genome.size * 6.0 + 12.0 {
+                if self.position.distance(plant_pos) < self.genome.size * EAT_RANGE_SIZE_MULT + EAT_RANGE_BASE {
                     actions.want_to_eat_plant_idx = if plant_idx != usize::MAX { Some(plant_idx) } else { None };
                     self.memory_food_pos = None;
                 } else { steer = self.seek(plant_pos); }
@@ -292,7 +288,7 @@ impl Animal {
         if steer == Vec2::ZERO && self.energy > self.genome.reproduction_threshold && self.last_reproduction > self.genome.reproduction_cooldown as u32 && !self.is_pregnant {
             if let Some((mate_id, mate_pos, mate_dist)) = sensors.nearest_mate {
                 self.current_state = AiState::Mate;
-                if mate_dist < 15.0 { actions.want_to_breed_with = Some(mate_id); }
+                if mate_dist < MATE_RANGE { actions.want_to_breed_with = Some(mate_id); }
                 else { steer = self.seek(mate_pos); }
             }
         }
@@ -303,8 +299,8 @@ impl Animal {
                 self.current_state = AiState::Flock;
                 self.flocking_target = Some(center);
                 let dist = self.position.distance(center);
-                if dist > 60.0 { steer = self.seek(center) * self.genome.sociality; }
-                else if dist < 20.0 { steer = (self.position - center).normalize_or_zero() * self.genome.speed * 0.3; }
+                if dist > FLOCK_DIST_TARGET { steer = self.seek(center) * self.genome.sociality; }
+                else if dist < SEPARATION_DIST { steer = (self.position - center).normalize_or_zero() * self.genome.speed * 0.3; }
             }
         }
 

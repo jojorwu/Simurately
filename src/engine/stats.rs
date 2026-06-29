@@ -1,3 +1,22 @@
+use crate::engine::config::MAX_LOG_ENTRIES;
+
+pub struct EventLog {
+    pub entries: Vec<String>,
+}
+
+impl EventLog {
+    pub fn new() -> Self {
+        Self { entries: Vec::new() }
+    }
+
+    pub fn push(&mut self, msg: String) {
+        self.entries.push(msg);
+        if self.entries.len() > MAX_LOG_ENTRIES {
+            self.entries.drain(0..20);
+        }
+    }
+}
+
 pub struct StatsManager {
     pub plant_count_history: Vec<f32>,
     pub insect_count_history: Vec<f32>,
@@ -27,9 +46,9 @@ impl StatsManager {
         self.fish_count_history.push(fish as f32);
         self.biodiversity_history.push(biodiversity as f32);
 
-        use crate::engine::config::STATS_HISTORY_SIZE;
-        if self.plant_count_history.len() > STATS_HISTORY_SIZE {
-            let excess = self.plant_count_history.len() - STATS_HISTORY_SIZE;
+        const MAX_HISTORY: usize = 600;
+        if self.plant_count_history.len() > MAX_HISTORY {
+            let excess = self.plant_count_history.len() - MAX_HISTORY;
             self.plant_count_history.drain(0..excess);
             self.insect_count_history.drain(0..excess);
             self.fish_count_history.drain(0..excess);

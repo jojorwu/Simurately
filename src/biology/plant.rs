@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
+use glam::Vec2;
 use super::genome::Genome;
 use rand::Rng;
+use crate::engine::config::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlantType {
@@ -15,7 +17,7 @@ pub struct Plant {
     pub id: u64,
     pub plant_type: PlantType,
     pub genome: Genome,
-    pub position: (f32, f32),
+    pub position: Vec2,
     pub energy: f32,
     pub health: f32,
     pub age: u32,
@@ -26,7 +28,7 @@ pub struct Plant {
 
 impl super::Entity for Plant {
     fn id(&self) -> u64 { self.id }
-    fn position(&self) -> glam::Vec2 { glam::Vec2::new(self.position.0, self.position.1) }
+    fn position(&self) -> Vec2 { self.position }
     fn health(&self) -> f32 { self.health }
     fn age(&self) -> u32 { self.age }
     fn is_dead(&self) -> bool {
@@ -42,7 +44,7 @@ impl super::Entity for Plant {
 }
 
 impl Plant {
-    pub fn new(id: u64, plant_type: PlantType, genome: Genome, position: (f32, f32)) -> Self {
+    pub fn new(id: u64, plant_type: PlantType, genome: Genome, position: Vec2) -> Self {
         let initial_energy = match plant_type {
             PlantType::Grass => 25.0,
             PlantType::Shrub => 60.0,
@@ -80,7 +82,7 @@ impl Plant {
         temperature: f32,
         humidity: f32,
         sunlight: f32,
-    ) -> (Option<(f32, f32, PlantType, Genome)>, f32) {
+    ) -> (Option<(Vec2, PlantType, Genome)>, f32) {
         self.age += 1;
 
         let photosynthesis = self.calculate_photosynthesis(sunlight);
@@ -96,9 +98,9 @@ impl Plant {
 
     fn calculate_photosynthesis(&self, sunlight: f32) -> f32 {
         sunlight * self.leaf_size * match self.plant_type {
-            PlantType::Grass => 0.4,
-            PlantType::Shrub => 0.25,
-            PlantType::Tree => 0.12,
+            PlantType::Grass => PHOTOSYNTHESIS_GRASS,
+            PlantType::Shrub => PHOTOSYNTHESIS_SHRUB,
+            PlantType::Tree => PHOTOSYNTHESIS_TREE,
             PlantType::Mushroom => 0.0,
         }
     }
@@ -117,10 +119,10 @@ impl Plant {
         }
 
         let growth_speed = match self.plant_type {
-            PlantType::Grass => 0.40,
-            PlantType::Shrub => 0.20,
-            PlantType::Tree => 0.07,
-            PlantType::Mushroom => 0.35,
+            PlantType::Grass => PLANT_GROWTH_GRASS,
+            PlantType::Shrub => PLANT_GROWTH_SHRUB,
+            PlantType::Tree => PLANT_GROWTH_TREE,
+            PlantType::Mushroom => PLANT_GROWTH_MUSHROOM,
         };
         (soil_energy * growth_speed * absorption_mult).min(10.0).min(soil_energy).max(0.0)
     }
@@ -144,7 +146,7 @@ impl Plant {
         }
     }
 
-    fn try_reproduce(&mut self) -> Option<(f32, f32, PlantType, Genome)> {
+    fn try_reproduce(&mut self) -> Option<(Vec2, PlantType, Genome)> {
         let repro_threshold = match self.plant_type {
             PlantType::Grass => self.genome.reproduction_threshold * 0.30,
             PlantType::Shrub => self.genome.reproduction_threshold * 0.65,
@@ -162,8 +164,7 @@ impl Plant {
                 PlantType::Mushroom => rng.gen_range(10.0..40.0),
             };
             let angle = rng.gen_range(0.0..std::f32::consts::TAU);
-            let seed_x = self.position.0 + angle.cos() * spread_dist;
-            let seed_y = self.position.1 + angle.sin() * spread_dist;
+            let child_pos = self.position + Vec2::new(angle.cos() * spread_dist, angle.sin() * spread_dist);
 
             let child_type = if rng.gen_range(0.0f32..1.0) < 0.02 {
                 match self.plant_type {
@@ -176,7 +177,7 @@ impl Plant {
 
             let mut child_genome = self.genome;
             child_genome.mutate_in_place(0.04);
-            return Some((seed_x, seed_y, child_type, child_genome));
+            return Some((child_pos, child_type, child_genome));
         }
         None
     }

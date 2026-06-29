@@ -164,7 +164,7 @@ pub fn draw_plants(
 ) {
     for chunk in visible {
         for plant in &chunk.plants {
-            let sp = to_screen(Vec2::new(plant.position.0, plant.position.1));
+            let sp = to_screen(plant.position);
             if rect.contains(sp) {
                 draw_single_plant(app, painter, plant, sp);
             }

@@ -217,7 +217,7 @@ pub fn draw_climate_tab(app: &LifeSimApp, ui: &mut egui::Ui) {
 
 pub fn draw_events_tab(app: &LifeSimApp, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
-        for msg in app.world.logs.iter().rev().take(80) {
+        for msg in app.world.logs.entries.iter().rev().take(80) {
             let color = if msg.contains("ЭВОЛЮЦИЯ") || msg.contains("ВЫМИРАНИЕ") {
                 egui::Color32::from_rgb(200, 150, 255)
             } else if msg.contains("⚡") {

@@ -93,7 +93,7 @@ impl LifeSimApp {
                 let mut min_dist = 25.0f32;
                 for chunk in self.world.chunks.values() {
                     for p in &chunk.plants {
-                        let d = world_pos.distance(Vec2::new(p.position.0, p.position.1));
+                        let d = world_pos.distance(p.position);
                         if d < min_dist { min_dist = d; best_id = Some(p.id); }
                     }
                     for a in &chunk.animals {
@@ -144,7 +144,7 @@ impl LifeSimApp {
             Tool::Kill => {
                 let br = self.brush_radius;
                 for chunk in self.world.chunks.values_mut() {
-                    chunk.plants.retain(|p| Vec2::new(p.position.0, p.position.1).distance(world_pos) > br);
+                    chunk.plants.retain(|p| p.position.distance(world_pos) > br);
                     chunk.animals.retain(|a| a.position.distance(world_pos) > br);
                 }
             }

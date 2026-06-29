@@ -26,10 +26,9 @@ pub struct Chunk {
     pub last_updated_tile_idx: usize,
 }
 
-#[derive(Default)]
 pub struct ChunkTickResult {
     pub migrated_animals: Vec<Animal>,
-    pub spawned_seeds: Vec<(f32, f32, PlantType, Genome)>,
+    pub spawned_seeds: Vec<(Vec2, PlantType, Genome)>,
     pub spawned_animals: Vec<Animal>,
     pub events: Vec<String>,
     pub died_animal_ids: Vec<u64>,
@@ -59,9 +58,23 @@ impl Chunk {
     }
 
     pub fn tick(&mut self, mutation_rate: f32, next_entity_id: &AtomicU64, climate: &Climate, tick_count: u64, _bucket_index: usize) -> ChunkTickResult {
-        if !self.active { return ChunkTickResult::default(); }
+        if !self.active {
+            return ChunkTickResult {
+                migrated_animals: Vec::new(),
+                spawned_seeds: Vec::new(),
+                spawned_animals: Vec::new(),
+                events: Vec::new(),
+                died_animal_ids: Vec::new(),
+            };
+        }
         let ctx = TickContext { mutation_rate, next_entity_id, climate, tick_count };
-        let mut result = ChunkTickResult::default();
+        let mut result = ChunkTickResult {
+            migrated_animals: Vec::new(),
+            spawned_seeds: Vec::new(),
+            spawned_animals: Vec::new(),
+            events: Vec::new(),
+            died_animal_ids: Vec::new(),
+        };
 
         self.update_tiles(ctx.climate);
         self.update_plants(&ctx, &mut result);
@@ -88,9 +101,8 @@ impl Chunk {
         if ctx.tick_count % PLANT_UPDATE_INTERVAL != 0 { return; }
         let mut dead_indices = Vec::new();
         for (i, plant) in self.plants.iter_mut().enumerate() {
-            let idx = world_to_tile_index(Vec2::new(plant.position.0, plant.position.1), self.id);
-            let tile = &self.tiles[idx];
-            let (seed, absorbed) = plant.update(tile.energy, (tile.temperature + ctx.climate.temperature) / 2.0, (tile.moisture + ctx.climate.humidity) / 2.0, ctx.climate.sunlight);
+            let idx = world_to_tile_index(plant.position, self.id);
+            let (seed, absorbed) = plant.update(self.tiles[idx].energy, (self.tiles[idx].temperature + ctx.climate.temperature) / 2.0, (self.tiles[idx].moisture + ctx.climate.humidity) / 2.0, ctx.climate.sunlight);
             self.tiles[idx].energy = (self.tiles[idx].energy - absorbed).max(0.0);
             if let Some(s) = seed { result.spawned_seeds.push(s); }
             if plant.is_dead() { dead_indices.push(i); }
@@ -101,7 +113,7 @@ impl Chunk {
 
     fn update_animals(&mut self, ctx: &TickContext, result: &mut ChunkTickResult) {
         let animal_snaps: Vec<_> = self.animals.iter().map(|a| (a.id, a.position, a.animal_type, a.genome.size, a.genome.diet, a.genome.aggression, a.energy, a.genome.species_id, a.genome.aquatic_adaptation)).collect();
-        let plant_snaps: Vec<_> = self.plants.iter().enumerate().map(|(i, p)| (i, Vec2::new(p.position.0, p.position.1), p.energy, p.is_poisonous)).collect();
+        let plant_snaps: Vec<_> = self.plants.iter().enumerate().map(|(i, p)| (i, p.position, p.energy, p.is_poisonous)).collect();
         let mut updates = Vec::with_capacity(self.animals.len());
         for mut animal in std::mem::take(&mut self.animals) {
             let tile = &self.tiles[world_to_tile_index(animal.position, self.id)];
