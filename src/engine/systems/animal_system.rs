@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use glam::Vec2;
 use rand::Rng;
 
-use crate::biology::animal::{Animal, AnimalUpdateResult};
+use crate::biology::animal::{Animal, AnimalUpdateResult, AnimalSnapshot};
 use crate::biology::plant::Plant;
 use crate::biology::genome::Genome;
 use crate::engine::tile::{Tile, TileType};
@@ -20,14 +20,15 @@ pub fn update_animals(
     ctx: &TickContext,
     result: &mut ChunkTickResult
 ) {
-    let animal_snaps: Vec<_> = animals.iter().map(|a| (a.id, a.position, a.animal_type, a.genome.size, a.genome.diet, a.genome.aggression, a.energy, a.genome.species_id, a.genome.aquatic_adaptation)).collect();
+    let animal_snaps: Vec<AnimalSnapshot> = animals.iter().map(|a| (a.id, a.position, a.animal_type, a.genome.size, a.genome.diet, a.genome.aggression, a.energy, a.genome.species_id, a.genome.aquatic_adaptation)).collect();
     let plant_snaps: Vec<_> = plants.iter().enumerate().map(|(i, p)| (i, p.position, p.energy, p.is_poisonous)).collect();
 
     let chunk_left = chunk_id.0 as f32 * CHUNK_WORLD_SIZE;
     let chunk_top = chunk_id.1 as f32 * CHUNK_WORLD_SIZE;
 
-    let mut updates = Vec::with_capacity(animals.len());
-    for (i, mut animal) in std::mem::take(animals).into_iter().enumerate() {
+    use rayon::prelude::*;
+
+    let updates: Vec<_> = std::mem::take(animals).into_par_iter().enumerate().map(|(i, mut animal)| {
         let gx = ((animal.position.x - chunk_left) / GRID_CELL_SIZE).floor() as i32;
         let gy = ((animal.position.y - chunk_top) / GRID_CELL_SIZE).floor() as i32;
 
@@ -49,12 +50,14 @@ pub fn update_animals(
         let filtered_animals: Vec<_> = nearby_animal_indices.into_iter().filter(|&&idx| idx != i).map(|&idx| animal_snaps[idx]).collect();
         let filtered_plants: Vec<_> = nearby_plant_indices.into_iter().map(|&idx| plant_snaps[idx]).collect();
 
-        let tile = &tiles[world_to_tile_index(animal.position, chunk_id)];
-        let res = animal.update(tile.tile_type == TileType::Water, &filtered_plants, &filtered_animals, ctx.climate.temperature, ctx.climate.humidity, ctx.climate.wind_speed);
-        updates.push((animal, res));
-    }
+        let tile_idx = world_to_tile_index(animal.position, chunk_id);
+        let is_water = tiles[tile_idx].tile_type == TileType::Water;
 
-    let mut eaten_ids = HashSet::new();
+        let res = animal.update(is_water, &filtered_plants, &filtered_animals, ctx.climate.temperature, ctx.climate.humidity, ctx.climate.wind_speed);
+        (animal, res)
+    }).collect();
+
+    let eaten_ids = HashSet::new();
     apply_animal_actions(updates, plants, eaten_ids, chunk_id, ctx, result, animals);
 }
 
@@ -68,16 +71,16 @@ fn apply_animal_actions(
     animals_vec: &mut Vec<Animal>
 ) {
     let mut dead_plants = HashSet::new();
-    for i in 0..updates.len() {
-        if updates[i].1.died { continue; }
-        if let Some(p_idx) = updates[i].1.want_to_eat_plant_idx {
+    for (animal, res) in &mut updates {
+        if res.died || eaten_ids.contains(&animal.id) { continue; }
+        if let Some(p_idx) = res.want_to_eat_plant_idx {
             if p_idx < plants.len() && !dead_plants.contains(&p_idx) {
                 let plant = &mut plants[p_idx];
-                let eat_amount = (plant.energy * 0.5).min(plant.nutritional_value() + updates[i].0.genome.size * 1.5);
+                let eat_amount = (plant.energy * 0.5).min(plant.nutritional_value() + animal.genome.size * 1.5);
                 plant.energy -= eat_amount;
-                let digestion = (1.0 - updates[i].0.genome.diet).clamp(0.2, 1.0) * updates[i].0.genome.digestion_efficiency;
-                if plant.is_poisonous { updates[i].0.health -= 10.0 * (1.0 - updates[i].0.genome.digestion_efficiency); }
-                else { updates[i].0.energy = (updates[i].0.energy + eat_amount * digestion).min(updates[i].0.genome.reproduction_threshold * 3.0); }
+                let digestion = (1.0 - animal.genome.diet).clamp(0.2, 1.0) * animal.genome.digestion_efficiency;
+                if plant.is_poisonous { animal.health -= 10.0 * (1.0 - animal.genome.digestion_efficiency); }
+                else { animal.energy = (animal.energy + eat_amount * digestion).min(animal.genome.reproduction_threshold * 3.0); }
                 if plant.energy <= 0.0 { dead_plants.insert(p_idx); }
             }
         }
@@ -88,8 +91,9 @@ fn apply_animal_actions(
 
     let id_to_idx: HashMap<u64, usize> = updates.iter().enumerate().map(|(i, (a, _))| (a.id, i)).collect();
     let actions: Vec<_> = updates.iter().enumerate().map(|(i, (a, res))| (i, a.id, res.want_to_attack, res.want_to_breed_with)).collect();
+    let mut bred_this_tick = HashSet::new();
     for (i, id, want_attack, want_breed) in actions {
-        if updates[i].1.died { continue; }
+        if updates[i].1.died || eaten_ids.contains(&id) { continue; }
         if let Some(target_id) = want_attack {
             if let Some(&target_idx) = id_to_idx.get(&target_id) {
                 if !eaten_ids.contains(&target_id) && updates[target_idx].0.health > 0.0 {
@@ -105,7 +109,9 @@ fn apply_animal_actions(
         }
         if let Some(m_id) = want_breed {
             if let Some(&m_idx) = id_to_idx.get(&m_id) {
-                if !eaten_ids.contains(&m_id) && updates[m_idx].0.health > 0.0 && updates[i].0.energy > updates[i].0.genome.reproduction_threshold * 0.5 && updates[m_idx].0.energy > updates[m_idx].0.genome.reproduction_threshold * 0.5 {
+                if !bred_this_tick.contains(&id) && !bred_this_tick.contains(&m_id) && !eaten_ids.contains(&m_id) && updates[m_idx].0.health > 0.0 && updates[i].0.energy > updates[i].0.genome.reproduction_threshold * 0.5 && updates[m_idx].0.energy > updates[m_idx].0.genome.reproduction_threshold * 0.5 {
+                    bred_this_tick.insert(id);
+                    bred_this_tick.insert(m_id);
                     updates[i].0.energy -= updates[i].0.genome.reproduction_threshold * 0.3;
                     updates[m_idx].0.energy -= updates[m_idx].0.genome.reproduction_threshold * 0.3;
                     updates[i].0.last_reproduction = 0; updates[m_idx].0.last_reproduction = 0;

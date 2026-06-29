@@ -91,14 +91,19 @@ impl LifeSimApp {
             Tool::Select => {
                 let mut best_id = None;
                 let mut min_dist = 25.0f32;
-                for chunk in self.world.chunks.values() {
-                    for p in &chunk.plants {
-                        let d = world_pos.distance(p.position);
-                        if d < min_dist { min_dist = d; best_id = Some(p.id); }
-                    }
-                    for a in &chunk.animals {
-                        let d = world_pos.distance(a.position);
-                        if d < min_dist { min_dist = d; best_id = Some(a.id); }
+                let (cx, cy) = crate::engine::world::world_to_chunk_coords(world_pos);
+                for dx in -1..=1 {
+                    for dy in -1..=1 {
+                        if let Some(chunk) = self.world.chunks.get(&(cx + dx, cy + dy)) {
+                            for p in &chunk.plants {
+                                let d = world_pos.distance(p.position);
+                                if d < min_dist { min_dist = d; best_id = Some(p.id); }
+                            }
+                            for a in &chunk.animals {
+                                let d = world_pos.distance(a.position);
+                                if d < min_dist { min_dist = d; best_id = Some(a.id); }
+                            }
+                        }
                     }
                 }
                 self.selected_entity_id = best_id;
@@ -110,9 +115,13 @@ impl LifeSimApp {
             Tool::SpawnInsect   => { self.world.spawn_animal(AnimalType::Insect, world_pos, None); }
             Tool::SpawnFish     => { self.world.spawn_animal(AnimalType::Fish, world_pos, None); }
             Tool::AddSoilEnergy => {
-                for (_, chunk) in &mut self.world.chunks {
-                    let chunk_left = chunk.id.0 as f32 * CHUNK_WORLD_SIZE;
-                    let chunk_top  = chunk.id.1 as f32 * CHUNK_WORLD_SIZE;
+                let (cx, cy) = crate::engine::world::world_to_chunk_coords(world_pos);
+                let brush_chunks = (self.brush_radius / CHUNK_WORLD_SIZE).ceil() as i32;
+                for dx in -brush_chunks..=brush_chunks {
+                    for dy in -brush_chunks..=brush_chunks {
+                        if let Some(chunk) = self.world.chunks.get_mut(&(cx + dx, cy + dy)) {
+                            let chunk_left = chunk.id.0 as f32 * CHUNK_WORLD_SIZE;
+                            let chunk_top  = chunk.id.1 as f32 * CHUNK_WORLD_SIZE;
                     for ty in 0..CHUNK_SIZE {
                         for tx in 0..CHUNK_SIZE {
                             let tp = Vec2::new(chunk_left + tx as f32 * TILE_SIZE + TILE_SIZE * 0.5,
@@ -123,12 +132,18 @@ impl LifeSimApp {
                             }
                         }
                     }
+                        }
+                    }
                 }
             }
             Tool::AddMoisture => {
-                for (_, chunk) in &mut self.world.chunks {
-                    let chunk_left = chunk.id.0 as f32 * CHUNK_WORLD_SIZE;
-                    let chunk_top  = chunk.id.1 as f32 * CHUNK_WORLD_SIZE;
+                let (cx, cy) = crate::engine::world::world_to_chunk_coords(world_pos);
+                let brush_chunks = (self.brush_radius / CHUNK_WORLD_SIZE).ceil() as i32;
+                for dx in -brush_chunks..=brush_chunks {
+                    for dy in -brush_chunks..=brush_chunks {
+                        if let Some(chunk) = self.world.chunks.get_mut(&(cx + dx, cy + dy)) {
+                            let chunk_left = chunk.id.0 as f32 * CHUNK_WORLD_SIZE;
+                            let chunk_top  = chunk.id.1 as f32 * CHUNK_WORLD_SIZE;
                     for ty in 0..CHUNK_SIZE {
                         for tx in 0..CHUNK_SIZE {
                             let tp = Vec2::new(chunk_left + tx as f32 * TILE_SIZE + TILE_SIZE * 0.5,
@@ -139,13 +154,21 @@ impl LifeSimApp {
                             }
                         }
                     }
+                        }
+                    }
                 }
             }
             Tool::Kill => {
                 let br = self.brush_radius;
-                for chunk in self.world.chunks.values_mut() {
-                    chunk.plants.retain(|p| p.position.distance(world_pos) > br);
-                    chunk.animals.retain(|a| a.position.distance(world_pos) > br);
+                let (cx, cy) = crate::engine::world::world_to_chunk_coords(world_pos);
+                let brush_chunks = (self.brush_radius / CHUNK_WORLD_SIZE).ceil() as i32;
+                for dx in -brush_chunks..=brush_chunks {
+                    for dy in -brush_chunks..=brush_chunks {
+                        if let Some(chunk) = self.world.chunks.get_mut(&(cx + dx, cy + dy)) {
+                            chunk.plants.retain(|p| p.position.distance(world_pos) > br);
+                            chunk.animals.retain(|a| a.position.distance(world_pos) > br);
+                        }
+                    }
                 }
             }
         }
@@ -163,21 +186,48 @@ impl eframe::App for LifeSimApp {
 
 impl LifeSimApp {
     fn draw_menu(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().frame(egui::Frame::default().fill(egui::Color32::from_rgb(10, 15, 20))).show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.add_space(100.0);
-                ui.heading(egui::RichText::new("🧬 Эволюционная Симуляция v2").size(40.0));
-                ui.add_space(50.0);
+                ui.add_space(120.0);
+                ui.heading(egui::RichText::new("🧬 Эволюционная Симуляция v2")
+                    .size(48.0)
+                    .strong()
+                    .color(egui::Color32::from_rgb(150, 220, 140)));
 
-                ui.group(|ui| {
-                    ui.set_width(300.0);
-                    ui.label("Настройки мира:");
-                    ui.add(egui::Slider::new(&mut self.world_size_chunks, 1..=10).text("Размер (чанки)"));
-                    ui.add_space(20.0);
+                ui.add_space(10.0);
+                ui.label(egui::RichText::new("Жизнь найдёт выход").italics().color(egui::Color32::GRAY));
 
-                    if ui.button(egui::RichText::new("🚀 Запустить симуляцию").size(20.0)).clicked() {
-                        self.start_simulation();
-                    }
+                ui.add_space(60.0);
+
+                ui.scope(|ui| {
+                    ui.visuals_mut().widgets.inactive.bg_fill = egui::Color32::from_rgb(20, 25, 35);
+                    ui.visuals_mut().widgets.hovered.bg_fill = egui::Color32::from_rgb(30, 40, 55);
+
+                    egui::Frame::group(ui.style())
+                        .fill(egui::Color32::from_rgb(15, 20, 30))
+                        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 50, 70)))
+                        .rounding(12.0)
+                        .inner_margin(24.0)
+                        .show(ui, |ui| {
+                            ui.set_width(320.0);
+                            ui.label(egui::RichText::new("Конфигурация мира").strong().size(18.0));
+                            ui.add_space(12.0);
+
+                            ui.horizontal(|ui| {
+                                ui.label("Размер (чанки):");
+                                ui.add(egui::Slider::new(&mut self.world_size_chunks, 1..=10).show_value(true));
+                            });
+
+                            ui.add_space(32.0);
+
+                            let start_btn = ui.add_sized([280.0, 50.0], egui::Button::new(
+                                egui::RichText::new("🚀 ЗАПУСТИТЬ").size(22.0).strong()
+                            ).fill(egui::Color32::from_rgb(50, 120, 60)));
+
+                            if start_btn.clicked() {
+                                self.start_simulation();
+                            }
+                        });
                 });
             });
         });

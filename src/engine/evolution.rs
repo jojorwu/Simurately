@@ -5,15 +5,19 @@ use crate::engine::species::Species;
 
 pub struct EvolutionManager {
     pub species_registry: HashMap<u32, Species>,
-    pub species_by_type: HashMap<AnimalType, Vec<u32>>,
     pub next_species_id: u32,
+}
+
+impl Default for EvolutionManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EvolutionManager {
     pub fn new() -> Self {
         Self {
             species_registry: HashMap::new(),
-            species_by_type: HashMap::new(),
             next_species_id: 1,
         }
     }

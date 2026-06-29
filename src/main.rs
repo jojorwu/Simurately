@@ -18,6 +18,32 @@ mod tests {
         let mut app = LifeSimApp::default();
         app.world.tick();
     }
+
+    #[test]
+    fn test_animal_reproduction() {
+        use crate::biology::animal::{Animal, AnimalType};
+        use crate::biology::genome::Genome;
+        use glam::Vec2;
+
+        let mut animal = Animal::new(1, AnimalType::Insect, Genome::default_insect(), Vec2::ZERO);
+        animal.energy = 500.0;
+        animal.is_pregnant = true;
+        animal.pregnancy_timer = animal.gestation_period();
+
+        let res = animal.update(false, &[], &[], 20.0, 0.5, 0.1);
+        assert!(res.offspring_count > 0);
+        assert!(!animal.is_pregnant);
+    }
+
+    #[test]
+    fn test_evolution_distance() {
+        use crate::biology::genome::Genome;
+        let g1 = Genome::default_insect();
+        let mut g2 = g1;
+        assert_eq!(g1.genetic_distance(&g2), 0.0);
+        g2.speed += 1.0;
+        assert!(g1.genetic_distance(&g2) > 0.0);
+    }
 }
 
 use eframe::egui;

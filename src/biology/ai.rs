@@ -12,8 +12,8 @@ pub fn decide_actions(animal: &mut Animal, sensors: SensoryData) -> (Vec2, Anima
     if let Some((pred_pos, pred_dist)) = sensors.nearest_predator {
         let threat_power = 1.0;
         let my_power = animal.genome.size * animal.genome.speed;
-        let danger_ratio = threat_power / (my_power * animal.genome.fear_threshold).max(0.1);
-        if danger_ratio > 0.6 || pred_dist < FLEE_DIST_THRESHOLD {
+        let danger_ratio = threat_power / (my_power * animal.genome.fear_threshold * animal.genome.fear_factor).max(0.1);
+        if danger_ratio > 0.6 || pred_dist < FLEE_DIST_THRESHOLD * animal.genome.fear_factor {
             animal.current_state = AiState::Flee;
             animal.memory_threat_pos = Some(pred_pos);
             steer = (animal.position - pred_pos).normalize_or_zero() * animal.genome.speed - animal.velocity;
@@ -24,7 +24,7 @@ pub fn decide_actions(animal: &mut Animal, sensors: SensoryData) -> (Vec2, Anima
     }
 
     // Hunt
-    if steer == Vec2::ZERO && animal.genome.diet > 0.5 && hunger_ratio < 1.5 {
+    if steer == Vec2::ZERO && animal.genome.diet > 0.5 && hunger_ratio < animal.genome.hunt_threshold {
         if let Some((prey_id, prey_pos, prey_dist)) = sensors.nearest_prey {
             animal.current_state = AiState::Hunt;
             if prey_dist < animal.genome.size * ATTACK_RANGE_SIZE_MULT + ATTACK_RANGE_BASE { actions.want_to_attack = Some(prey_id); }
@@ -49,7 +49,8 @@ pub fn decide_actions(animal: &mut Animal, sensors: SensoryData) -> (Vec2, Anima
     if steer == Vec2::ZERO && animal.energy > animal.genome.reproduction_threshold && animal.last_reproduction > animal.genome.reproduction_cooldown as u32 && !animal.is_pregnant {
         if let Some((mate_id, mate_pos, mate_dist)) = sensors.nearest_mate {
             animal.current_state = AiState::Mate;
-            if mate_dist < MATE_RANGE { actions.want_to_breed_with = Some(mate_id); }
+            let mate_range = MATE_RANGE * animal.genome.mating_drive;
+            if mate_dist < mate_range { actions.want_to_breed_with = Some(mate_id); }
             else { steer = seek(animal, mate_pos); }
         }
     }

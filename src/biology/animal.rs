@@ -2,7 +2,6 @@
 use serde::{Deserialize, Serialize};
 use super::genome::Genome;
 use glam::Vec2;
-use rand::Rng;
 use crate::engine::config::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -100,7 +99,7 @@ impl Animal {
         &mut self,
         is_water_tile: bool,
         plants: &[(usize, Vec2, f32, bool)],
-        nearby_animals: &[(u64, Vec2, AnimalType, f32, f32, f32, f32, u32, f32)],
+        nearby_animals: &[AnimalSnapshot],
         temperature: f32,
         humidity: f32,
         wind_speed: f32,
@@ -143,6 +142,7 @@ impl Animal {
 
     fn handle_metabolism(&mut self, wind_speed: f32, humidity: f32) {
         let move_spd = self.velocity.length();
+        let current_size = self.current_size();
 
         if move_spd > self.genome.speed * 0.6 {
             self.fatigue = (self.fatigue + 0.3).min(100.0);
@@ -150,7 +150,7 @@ impl Animal {
             self.fatigue = (self.fatigue - 0.5).max(0.0);
         }
 
-        let base_metabolism = self.genome.metabolism * (0.5 + 0.5 * self.genome.size)
+        let base_metabolism = self.genome.metabolism * (0.5 + 0.5 * current_size)
             + move_spd * move_spd * 0.008;
 
         let weather_mult = match self.animal_type {
@@ -169,12 +169,8 @@ impl Animal {
     }
 
     fn handle_terrain_effects(&mut self, is_water_tile: bool) {
-        let wrong_terrain = match self.animal_type {
-            AnimalType::Insect => is_water_tile && self.genome.aquatic_adaptation < 0.4,
-            AnimalType::Fish => !is_water_tile && self.genome.aquatic_adaptation > 0.6,
-        };
-        if wrong_terrain {
-            let adaptation = if is_water_tile { self.genome.aquatic_adaptation } else { 1.0 - self.genome.aquatic_adaptation };
+        let adaptation = if is_water_tile { self.genome.aquatic_adaptation } else { 1.0 - self.genome.aquatic_adaptation };
+        if adaptation < 0.7 {
             self.health -= WRONG_TERRAIN_HEALTH_LOSS * (1.0 - adaptation);
         }
     }
@@ -196,48 +192,51 @@ impl Animal {
     fn collect_sensory_data(
         &self,
         plants: &[(usize, Vec2, f32, bool)],
-        nearby_animals: &[(u64, Vec2, AnimalType, f32, f32, f32, f32, u32, f32)],
+        nearby_animals: &[AnimalSnapshot],
     ) -> SensoryData {
         let vision = self.genome.vision_range;
+        let mut nearest_predator = None;
+        let mut min_pred_dist = vision;
+        let mut nearest_prey = None;
+        let mut min_prey_dist = vision;
+        let mut nearest_mate = None;
+        let mut min_mate_dist = vision;
+        let mut flock_sum = Vec2::ZERO;
+        let mut flock_count = 0;
 
-        let nearest_predator = nearby_animals.iter()
-            .filter(|(id, pos, t, size, diet, aggression, _, _, _)| {
-                *id != self.id && pos.distance(self.position) < vision && self.is_threatened_by(*t, *size, *diet, *aggression)
-            })
-            .map(|(_, pos, _, _, _, _, _, _, _)| (*pos, pos.distance(self.position)))
-            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        for (id, pos, t, size, diet, aggression, energy, spec_id, _) in nearby_animals {
+            if *id == self.id { continue; }
+            let d = pos.distance(self.position);
+            if d >= vision { continue; }
 
-        let nearest_prey = if self.genome.diet > 0.4 {
-            nearby_animals.iter()
-                .filter(|(id, pos, t, size, _, _, prey_energy, _, _)| {
-                    *id != self.id && pos.distance(self.position) < vision && self.can_eat_animal(*t, *size) && *prey_energy > 0.0
-                })
-                .map(|(id, pos, _, _, _, _, _, _, _)| (*id, *pos, pos.distance(self.position)))
-                .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
-        } else { None };
+            if self.is_threatened_by(*t, *size, *diet, *aggression) && d < min_pred_dist {
+                min_pred_dist = d;
+                nearest_predator = Some((*pos, d));
+            }
+            if self.genome.diet > 0.4 && self.can_eat_animal(*t, *size) && *energy > 0.0 && d < min_prey_dist {
+                min_prey_dist = d;
+                nearest_prey = Some((*id, *pos, d));
+            }
+            if *t == self.animal_type && *spec_id == self.genome.species_id {
+                if *energy > self.genome.reproduction_threshold * 0.6 && d < min_mate_dist {
+                    min_mate_dist = d;
+                    nearest_mate = Some((*id, *pos, d));
+                }
+                if d < vision * 0.8 {
+                    flock_sum += *pos;
+                    flock_count += 1;
+                }
+            }
+        }
 
         let nearest_plant = if self.genome.diet < 0.7 {
             plants.iter()
                 .filter(|(_, pos, energy, _)| pos.distance(self.position) < vision && *energy > 5.0)
-                .map(|(idx, pos, energy, _)| (*idx, *pos, pos.distance(self.position)))
+                .map(|(idx, pos, _, _)| (*idx, *pos, pos.distance(self.position)))
                 .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
         } else { None };
 
-        let nearest_mate = nearby_animals.iter()
-            .filter(|(id, pos, t, _, _, _, mate_energy, spec_id, _)| {
-                *id != self.id && *t == self.animal_type && *spec_id == self.genome.species_id && pos.distance(self.position) < vision && *mate_energy > self.genome.reproduction_threshold * 0.6
-            })
-            .map(|(id, pos, _, _, _, _, _, _, _)| (*id, *pos, pos.distance(self.position)))
-            .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
-
-        let flock_center = if self.genome.sociality > 0.5 {
-            let neighbors: Vec<Vec2> = nearby_animals.iter()
-                .filter(|(id, pos, t, _, _, _, _, spec_id, _)| {
-                    *id != self.id && *t == self.animal_type && *spec_id == self.genome.species_id && pos.distance(self.position) < vision * 0.8
-                })
-                .map(|(_, pos, _, _, _, _, _, _, _)| *pos).collect();
-            if neighbors.len() >= 2 { Some(neighbors.iter().sum::<Vec2>() / neighbors.len() as f32) } else { None }
-        } else { None };
+        let flock_center = if flock_count >= 2 { Some(flock_sum / flock_count as f32) } else { None };
 
         SensoryData { nearest_predator, nearest_prey, nearest_plant, nearest_mate, flock_center }
     }
@@ -282,6 +281,16 @@ impl Animal {
         (60.0 + self.genome.offspring_count * 20.0 + self.genome.size * 15.0) as u32
     }
 
+    pub fn current_size(&self) -> f32 {
+        let maturation_age = self.gestation_period() * 4;
+        if self.age < maturation_age {
+            let t = self.age as f32 / maturation_age as f32;
+            self.genome.size * (0.3 + 0.7 * t)
+        } else {
+            self.genome.size
+        }
+    }
+
     pub fn is_dead(&self) -> bool {
         <Self as super::Entity>::is_dead(self)
     }
@@ -305,3 +314,5 @@ pub struct AnimalUpdateActions {
     pub want_to_eat_plant_idx: Option<usize>,
     pub want_to_attack: Option<u64>,
 }
+
+pub type AnimalSnapshot = (u64, Vec2, AnimalType, f32, f32, f32, f32, u32, f32);

@@ -137,20 +137,30 @@ impl World {
         }
     }
 
-    fn handle_lightning_strike(&mut self, pos: Vec2) {
+    fn handle_lightning_strike(&mut self, _pos: Vec2) {
         let mut rng = rand::thread_rng();
-        let lx = pos.x * CHUNK_WORLD_SIZE + rng.gen_range(0.0..CHUNK_WORLD_SIZE);
-        let ly = pos.y * CHUNK_WORLD_SIZE + rng.gen_range(0.0..CHUNK_WORLD_SIZE);
+        if self.chunks.is_empty() { return; }
+        let keys: Vec<_> = self.chunks.keys().cloned().collect();
+        let coords = keys[rng.gen_range(0..keys.len())];
+
+        let lx = coords.0 as f32 * CHUNK_WORLD_SIZE + rng.gen_range(0.0..CHUNK_WORLD_SIZE);
+        let ly = coords.1 as f32 * CHUNK_WORLD_SIZE + rng.gen_range(0.0..CHUNK_WORLD_SIZE);
         let lpos = Vec2::new(lx, ly);
+
         self.log(format!("⚡ Удар молнии в ({:.0}, {:.0})!", lx, ly));
         self.climate.lightning_strike = Some((lpos, 6));
 
-        for chunk in self.chunks.values_mut() {
-            for plant in &mut chunk.plants {
-                if plant.position.distance(lpos) < 50.0 { plant.health -= 40.0; }
-            }
-            for animal in &mut chunk.animals {
-                if animal.position.distance(lpos) < 50.0 { animal.health -= 50.0; }
+        let (cx, cy) = world_to_chunk_coords(lpos);
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                if let Some(chunk) = self.chunks.get_mut(&(cx + dx, cy + dy)) {
+                    for plant in &mut chunk.plants {
+                        if plant.position.distance(lpos) < 50.0 { plant.health -= 40.0; }
+                    }
+                    for animal in &mut chunk.animals {
+                        if animal.position.distance(lpos) < 50.0 { animal.health -= 50.0; }
+                    }
+                }
             }
         }
     }
@@ -161,42 +171,54 @@ impl World {
         let id_gen = &self.next_entity_id;
         let bucket_index = (self.tick_count % 4) as usize;
 
-        self.chunks.iter_mut().par_bridge().map(|(coords, chunk)| {
+        self.chunks.par_iter_mut().map(|(coords, chunk)| {
             let res = chunk.tick(mutation_rate, id_gen, &climate_snapshot, self.tick_count, bucket_index);
             (*coords, res)
         }).collect()
     }
 
     fn process_tick_results(&mut self, results: Vec<((i32, i32), ChunkTickResult)>) {
-        let mut animals_to_spawn = Vec::new();
-        let mut seeds_to_spawn = Vec::new();
-        let mut died_count = 0u64;
+        let (animals_to_spawn, seeds_to_spawn, died_count, events) = results.into_par_iter()
+            .fold(
+                || (Vec::new(), Vec::new(), 0u64, Vec::new()),
+                |(mut a, mut s, mut d, mut e), (_, res)| {
+                    a.extend(res.migrated_animals);
+                    a.extend(res.spawned_animals);
+                    s.extend(res.spawned_seeds);
+                    d += res.died_animal_ids.len() as u64;
+                    e.extend(res.events);
+                    (a, s, d, e)
+                }
+            )
+            .reduce(
+                || (Vec::new(), Vec::new(), 0u64, Vec::new()),
+                |(mut a1, mut s1, mut d1, mut e1), (a2, s2, d2, e2)| {
+                    a1.extend(a2);
+                    s1.extend(s2);
+                    d1 += d2;
+                    e1.extend(e2);
+                    (a1, s1, d1, e1)
+                }
+            );
 
-        for (_, res) in results {
-            animals_to_spawn.extend(res.migrated_animals);
-            animals_to_spawn.extend(res.spawned_animals);
-            seeds_to_spawn.extend(res.spawned_seeds);
-            died_count += res.died_animal_ids.len() as u64;
-            for ev in res.events { self.log(ev); }
-        }
+        for ev in events { self.log(ev); }
         self.stats.total_deaths += died_count;
 
         for mut animal in animals_to_spawn {
+            let coords = world_to_chunk_coords(animal.position);
             if animal.age == 0 {
                 self.stats.total_births += 1;
                 let spec_id = self.register_or_match_species(&mut animal.genome, animal.animal_type);
                 animal.genome.species_id = spec_id;
                 if let Some(spec) = self.evolution_manager.species_registry.get_mut(&spec_id) { spec.total_born += 1; }
             }
-            let coords = world_to_chunk_coords(animal.position);
-            self.add_chunk(coords.0, coords.1);
-            if let Some(chunk) = self.chunks.get_mut(&coords) { chunk.animals.push(animal); }
+            self.chunks.entry(coords).or_insert_with(|| Chunk::new(coords)).animals.push(animal);
         }
 
         for (pos, ptype, genome) in seeds_to_spawn {
             let coords = world_to_chunk_coords(pos);
-            self.add_chunk(coords.0, coords.1);
-            if let Some(chunk) = self.chunks.get_mut(&coords) {
+            let chunk = self.chunks.entry(coords).or_insert_with(|| Chunk::new(coords));
+            {
                 let tile_idx = world_to_tile_index(pos, coords);
                 let tile = &chunk.tiles[tile_idx];
                 let can_grow = match ptype {
@@ -223,12 +245,8 @@ impl World {
             }
         }
 
-        for spec in self.evolution_manager.species_registry.values_mut() {
-            if spec.population == 0 && spec.active {
-                spec.active = false;
-                self.logs.push(format!("[Тик {}] ВЫМИРАНИЕ: Вид '{}' исчез! (прожил {} тиков)", self.tick_count, spec.name, self.tick_count - spec.founded_at_tick));
-            } else if spec.population > 0 && !spec.active { spec.active = true; }
-        }
+        let logs = self.evolution_manager.update_populations(self.tick_count);
+        for log in logs { self.log(log); }
 
         let active_species = self.evolution_manager.species_registry.values().filter(|s| s.active).count();
         self.stats.record_history(plants, insects, fish, active_species);

@@ -4,6 +4,12 @@ pub struct EventLog {
     pub entries: Vec<String>,
 }
 
+impl Default for EventLog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventLog {
     pub fn new() -> Self {
         Self { entries: Vec::new() }
@@ -25,6 +31,12 @@ pub struct StatsManager {
     pub total_deaths: u64,
     pub total_births: u64,
     pub total_speciations: u64,
+}
+
+impl Default for StatsManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StatsManager {
