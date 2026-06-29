@@ -186,21 +186,48 @@ impl eframe::App for LifeSimApp {
 
 impl LifeSimApp {
     fn draw_menu(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().frame(egui::Frame::default().fill(egui::Color32::from_rgb(10, 15, 20))).show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.add_space(100.0);
-                ui.heading(egui::RichText::new("🧬 Эволюционная Симуляция v2").size(40.0));
-                ui.add_space(50.0);
+                ui.add_space(120.0);
+                ui.heading(egui::RichText::new("🧬 Эволюционная Симуляция v2")
+                    .size(48.0)
+                    .strong()
+                    .color(egui::Color32::from_rgb(150, 220, 140)));
 
-                ui.group(|ui| {
-                    ui.set_width(300.0);
-                    ui.label("Настройки мира:");
-                    ui.add(egui::Slider::new(&mut self.world_size_chunks, 1..=10).text("Размер (чанки)"));
-                    ui.add_space(20.0);
+                ui.add_space(10.0);
+                ui.label(egui::RichText::new("Жизнь найдёт выход").italics().color(egui::Color32::GRAY));
 
-                    if ui.button(egui::RichText::new("🚀 Запустить симуляцию").size(20.0)).clicked() {
-                        self.start_simulation();
-                    }
+                ui.add_space(60.0);
+
+                ui.scope(|ui| {
+                    ui.visuals_mut().widgets.inactive.bg_fill = egui::Color32::from_rgb(20, 25, 35);
+                    ui.visuals_mut().widgets.hovered.bg_fill = egui::Color32::from_rgb(30, 40, 55);
+
+                    egui::Frame::group(ui.style())
+                        .fill(egui::Color32::from_rgb(15, 20, 30))
+                        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 50, 70)))
+                        .rounding(12.0)
+                        .inner_margin(24.0)
+                        .show(ui, |ui| {
+                            ui.set_width(320.0);
+                            ui.label(egui::RichText::new("Конфигурация мира").strong().size(18.0));
+                            ui.add_space(12.0);
+
+                            ui.horizontal(|ui| {
+                                ui.label("Размер (чанки):");
+                                ui.add(egui::Slider::new(&mut self.world_size_chunks, 1..=10).show_value(true));
+                            });
+
+                            ui.add_space(32.0);
+
+                            let start_btn = ui.add_sized([280.0, 50.0], egui::Button::new(
+                                egui::RichText::new("🚀 ЗАПУСТИТЬ").size(22.0).strong()
+                            ).fill(egui::Color32::from_rgb(50, 120, 60)));
+
+                            if start_btn.clicked() {
+                                self.start_simulation();
+                            }
+                        });
                 });
             });
         });

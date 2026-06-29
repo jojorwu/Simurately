@@ -40,7 +40,24 @@ fn draw_chunk_tiles(
             let tile_rect = egui::Rect::from_two_pos(tile_tl, tile_br);
             if rect.intersects(tile_rect) {
                 let tile = &chunk.tiles[ty * CHUNK_SIZE + tx];
-                painter.rect_filled(tile_rect, 0.0, get_tile_color(app, tile));
+                let color = get_tile_color(app, tile);
+                painter.rect_filled(tile_rect, 0.0, color);
+
+                // Зернистость для текстурности (только при достаточном зуме)
+                if app.camera_zoom > 1.5 {
+                    let hash = ((tx * 73856093) ^ (ty * 19349663) ^ (chunk.id.0 as usize * 83492791) ^ (chunk.id.1 as usize * 1000003)) % 100;
+                    if hash < 15 {
+                        let brightness = if hash < 7 { 5 } else { -5 };
+                        let dot_rect = egui::Rect::from_center_size(tile_rect.center(), tile_rect.size() * 0.3);
+                        painter.rect_filled(dot_rect, 1.0, egui::Color32::from_rgba_premultiplied(
+                            (color.r() as i16 + brightness).clamp(0, 255) as u8,
+                            (color.g() as i16 + brightness).clamp(0, 255) as u8,
+                            (color.b() as i16 + brightness).clamp(0, 255) as u8,
+                            50
+                        ));
+                    }
+                }
+
                 if app.camera_zoom > 0.8 {
                     painter.rect_stroke(tile_rect, 0.0, egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 20)));
                 }

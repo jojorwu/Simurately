@@ -66,16 +66,19 @@ pub fn draw_left_panel(app: &mut LifeSimApp, ctx: &egui::Context) {
                 if ui.button("⏭ Шаг").clicked() { app.world.tick(); }
             });
 
-            ui.add(egui::Slider::new(&mut app.ticks_per_frame, 1..=30)
-                .text("Тиков/кадр")
-                .clamp_to_range(true));
-            ui.add(egui::Slider::new(&mut app.world.mutation_rate, 0.0..=0.5)
-                .text("Мутация")
-                .clamp_to_range(true));
+            egui::Grid::new("control_grid").num_columns(2).spacing([10.0, 8.0]).show(ui, |ui| {
+                ui.label("Тиков/кадр:");
+                ui.add(egui::Slider::new(&mut app.ticks_per_frame, 1..=30).show_value(true));
+                ui.end_row();
 
-            ui.add_space(8.0);
+                ui.label("Мутация:");
+                ui.add(egui::Slider::new(&mut app.world.mutation_rate, 0.0..=0.5).show_value(true));
+                ui.end_row();
+            });
+
+            ui.add_space(12.0);
             ui.label(egui::RichText::new("🌍 Принудительная погода").color(egui::Color32::from_rgb(180, 180, 255)));
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.small_button("☀").on_hover_text("Ясно").clicked() {
                     app.world.climate.next_weather = WeatherType::Sunny;
                     app.world.climate.transition_progress = 0.0;
@@ -102,17 +105,25 @@ pub fn draw_left_panel(app: &mut LifeSimApp, ctx: &egui::Context) {
             ui.label(egui::RichText::new("🛠 Инструменты").strong().color(egui::Color32::from_rgb(150, 220, 140)));
             ui.separator();
 
-            let tools = [
-                Tool::Select, Tool::SpawnGrass, Tool::SpawnShrub, Tool::SpawnTree,
-                Tool::SpawnMushroom, Tool::SpawnInsect, Tool::SpawnFish,
-                Tool::AddSoilEnergy, Tool::AddMoisture, Tool::Kill,
-            ];
-            for tool in tools {
-                ui.selectable_value(&mut app.active_tool, tool, tool.label());
-            }
+            ui.collapsing("🌱 Растения", |ui| {
+                ui.selectable_value(&mut app.active_tool, Tool::SpawnGrass, Tool::SpawnGrass.label());
+                ui.selectable_value(&mut app.active_tool, Tool::SpawnShrub, Tool::SpawnShrub.label());
+                ui.selectable_value(&mut app.active_tool, Tool::SpawnTree, Tool::SpawnTree.label());
+                ui.selectable_value(&mut app.active_tool, Tool::SpawnMushroom, Tool::SpawnMushroom.label());
+            });
+            ui.collapsing("🐾 Животные", |ui| {
+                ui.selectable_value(&mut app.active_tool, Tool::SpawnInsect, Tool::SpawnInsect.label());
+                ui.selectable_value(&mut app.active_tool, Tool::SpawnFish, Tool::SpawnFish.label());
+            });
+            ui.collapsing("🛠 Окружение", |ui| {
+                ui.selectable_value(&mut app.active_tool, Tool::AddSoilEnergy, Tool::AddSoilEnergy.label());
+                ui.selectable_value(&mut app.active_tool, Tool::AddMoisture, Tool::AddMoisture.label());
+                ui.selectable_value(&mut app.active_tool, Tool::Kill, Tool::Kill.label());
+            });
+            ui.selectable_value(&mut app.active_tool, Tool::Select, Tool::Select.label());
 
             if matches!(app.active_tool, Tool::AddSoilEnergy | Tool::AddMoisture | Tool::Kill) {
-                ui.add(egui::Slider::new(&mut app.brush_radius, 5.0..=120.0).text("Радиус"));
+                ui.add(egui::Slider::new(&mut app.brush_radius, 5.0..=120.0).text("Радиус кисти"));
             }
 
             ui.add_space(8.0);
