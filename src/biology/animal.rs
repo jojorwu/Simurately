@@ -128,7 +128,7 @@ impl Animal {
         }
 
         let sensors = self.collect_sensory_data(plants, nearby_animals);
-        let (steer, actions) = self.decide_actions(sensors);
+        let (steer, actions) = super::ai::decide_actions(self, sensors);
 
         self.apply_movement(steer, is_water_tile, wind_speed);
 
@@ -242,87 +242,6 @@ impl Animal {
         SensoryData { nearest_predator, nearest_prey, nearest_plant, nearest_mate, flock_center }
     }
 
-    fn decide_actions(&mut self, sensors: SensoryData) -> (Vec2, AnimalUpdateActions) {
-        let mut steer = Vec2::ZERO;
-        let mut actions = AnimalUpdateActions::default();
-        let hunger_ratio = self.energy / self.genome.reproduction_threshold.max(50.0);
-
-        // Flee
-        if let Some((pred_pos, pred_dist)) = sensors.nearest_predator {
-            let threat_power = 1.0;
-            let my_power = self.genome.size * self.genome.speed;
-            let danger_ratio = threat_power / (my_power * self.genome.fear_threshold).max(0.1);
-            if danger_ratio > 0.6 || pred_dist < FLEE_DIST_THRESHOLD {
-                self.current_state = AiState::Flee;
-                self.memory_threat_pos = Some(pred_pos);
-                steer = (self.position - pred_pos).normalize_or_zero() * self.genome.speed - self.velocity;
-            }
-        } else if let Some(threat_pos) = self.memory_threat_pos {
-            steer = (self.position - threat_pos).normalize_or_zero() * self.genome.speed * 0.5 - self.velocity;
-            if self.age % 30 == 0 { self.memory_threat_pos = None; }
-        }
-
-        // Hunt
-        if steer == Vec2::ZERO && self.genome.diet > 0.5 && hunger_ratio < 1.5 {
-            if let Some((prey_id, prey_pos, prey_dist)) = sensors.nearest_prey {
-                self.current_state = AiState::Hunt;
-                if prey_dist < self.genome.size * ATTACK_RANGE_SIZE_MULT + ATTACK_RANGE_BASE { actions.want_to_attack = Some(prey_id); }
-                else { steer = self.seek(prey_pos); }
-            }
-        }
-
-        // Forage
-        if steer == Vec2::ZERO && self.genome.diet < 0.7 && hunger_ratio < 1.2 {
-            let food_target = sensors.nearest_plant.map(|(idx, pos, _)| (idx, pos)).or_else(|| self.memory_food_pos.map(|p| (usize::MAX, p)));
-            if let Some((plant_idx, plant_pos)) = food_target {
-                self.current_state = AiState::Forage;
-                if plant_idx != usize::MAX { self.memory_food_pos = Some(plant_pos); }
-                if self.position.distance(plant_pos) < self.genome.size * EAT_RANGE_SIZE_MULT + EAT_RANGE_BASE {
-                    actions.want_to_eat_plant_idx = if plant_idx != usize::MAX { Some(plant_idx) } else { None };
-                    self.memory_food_pos = None;
-                } else { steer = self.seek(plant_pos); }
-            }
-        }
-
-        // Mate
-        if steer == Vec2::ZERO && self.energy > self.genome.reproduction_threshold && self.last_reproduction > self.genome.reproduction_cooldown as u32 && !self.is_pregnant {
-            if let Some((mate_id, mate_pos, mate_dist)) = sensors.nearest_mate {
-                self.current_state = AiState::Mate;
-                if mate_dist < MATE_RANGE { actions.want_to_breed_with = Some(mate_id); }
-                else { steer = self.seek(mate_pos); }
-            }
-        }
-
-        // Flock
-        if steer == Vec2::ZERO && self.genome.sociality > 0.4 {
-            if let Some(center) = sensors.flock_center {
-                self.current_state = AiState::Flock;
-                self.flocking_target = Some(center);
-                let dist = self.position.distance(center);
-                if dist > FLOCK_DIST_TARGET { steer = self.seek(center) * self.genome.sociality; }
-                else if dist < SEPARATION_DIST { steer = (self.position - center).normalize_or_zero() * self.genome.speed * 0.3; }
-            }
-        }
-
-        // Rest
-        if steer == Vec2::ZERO && hunger_ratio > 1.8 && self.fatigue > 40.0 {
-            self.current_state = AiState::Rest;
-            steer = -self.velocity * 0.3;
-        }
-
-        // Wander
-        if steer == Vec2::ZERO {
-            self.current_state = AiState::Wander;
-            let mut rng = rand::thread_rng();
-            let base_dir = if self.velocity.length_squared() > 0.01 { self.velocity.normalize() }
-            else { let a = rng.gen_range(0.0..std::f32::consts::TAU); Vec2::new(a.cos(), a.sin()) };
-            let rot = glam::Mat2::from_angle(rng.gen_range(-0.5..0.5));
-            let wander_speed = self.genome.speed * if self.fatigue > 60.0 { 0.4 } else { 0.65 };
-            steer = rot * base_dir * wander_speed - self.velocity;
-        }
-
-        (steer, actions)
-    }
 
     fn apply_movement(&mut self, steer: Vec2, is_water_tile: bool, wind_speed: f32) {
         let max_force = self.genome.speed * 0.25 * if self.fatigue > 70.0 { 0.5 } else { 1.0 };
@@ -372,16 +291,16 @@ impl Animal {
     }
 }
 
-struct SensoryData {
-    nearest_predator: Option<(Vec2, f32)>,
-    nearest_prey: Option<(u64, Vec2, f32)>,
-    nearest_plant: Option<(usize, Vec2, f32)>,
-    nearest_mate: Option<(u64, Vec2, f32)>,
-    flock_center: Option<Vec2>,
+pub struct SensoryData {
+    pub nearest_predator: Option<(Vec2, f32)>,
+    pub nearest_prey: Option<(u64, Vec2, f32)>,
+    pub nearest_plant: Option<(usize, Vec2, f32)>,
+    pub nearest_mate: Option<(u64, Vec2, f32)>,
+    pub flock_center: Option<Vec2>,
 }
 
 #[derive(Default)]
-struct AnimalUpdateActions {
+pub struct AnimalUpdateActions {
     pub want_to_breed_with: Option<u64>,
     pub want_to_eat_plant_idx: Option<usize>,
     pub want_to_attack: Option<u64>,
