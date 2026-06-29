@@ -27,9 +27,9 @@ impl StatsManager {
         self.fish_count_history.push(fish as f32);
         self.biodiversity_history.push(biodiversity as f32);
 
-        const MAX_HISTORY: usize = 600;
-        if self.plant_count_history.len() > MAX_HISTORY {
-            let excess = self.plant_count_history.len() - MAX_HISTORY;
+        use crate::engine::config::STATS_HISTORY_SIZE;
+        if self.plant_count_history.len() > STATS_HISTORY_SIZE {
+            let excess = self.plant_count_history.len() - STATS_HISTORY_SIZE;
             self.plant_count_history.drain(0..excess);
             self.insect_count_history.drain(0..excess);
             self.fish_count_history.drain(0..excess);

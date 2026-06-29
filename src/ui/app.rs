@@ -5,7 +5,7 @@ use rand::Rng;
 
 use crate::engine::world::World;
 use crate::engine::tile::TileType;
-use crate::engine::chunk::{CHUNK_WORLD_SIZE, TILE_SIZE, CHUNK_SIZE};
+use crate::engine::config::{CHUNK_WORLD_SIZE, TILE_SIZE, CHUNK_SIZE};
 use crate::biology::plant::PlantType;
 use crate::biology::animal::AnimalType;
 

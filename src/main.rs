@@ -1,25 +1,6 @@
 pub mod engine;
 pub mod biology;
 pub mod ui;
-pub mod stats;
-
-#[cfg(test)]
-mod tests {
-    use super::ui::app::LifeSimApp;
-
-    #[test]
-    fn test_app_creation() {
-        let mut app = LifeSimApp::default();
-        app.start_simulation();
-        assert!(app.world.chunks.len() > 0);
-    }
-
-    #[test]
-    fn test_app_tick() {
-        let mut app = LifeSimApp::default();
-        app.world.tick();
-    }
-}
 
 use eframe::egui;
 
@@ -37,4 +18,22 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| Box::new(ui::app::LifeSimApp::new(cc)) as Box<dyn eframe::App>),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ui::app::LifeSimApp;
+
+    #[test]
+    fn test_app_creation() {
+        let mut app = LifeSimApp::default();
+        app.start_simulation();
+        assert!(app.world.chunks.len() > 0);
+    }
+
+    #[test]
+    fn test_app_tick() {
+        let mut app = LifeSimApp::default();
+        app.world.tick();
+    }
 }

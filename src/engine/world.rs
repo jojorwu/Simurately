@@ -10,9 +10,10 @@ use crate::biology::animal::AnimalType;
 use crate::engine::tile::TileType;
 use crate::engine::climate::Climate;
 use crate::engine::events::WorldEvent;
-use crate::stats::StatsManager;
-use crate::engine::chunk::{Chunk, ChunkTickResult, CHUNK_WORLD_SIZE, world_to_tile_index};
+use crate::engine::stats::StatsManager;
+use crate::engine::chunk::{Chunk, ChunkTickResult, world_to_tile_index};
 use crate::engine::evolution::EvolutionManager;
+use crate::engine::config::*;
 
 pub fn world_to_chunk_coords(pos: Vec2) -> (i32, i32) {
     (
@@ -134,7 +135,7 @@ impl World {
                 WorldEvent::LightningStrike(pos) => self.handle_lightning_strike(pos),
             }
         }
-        if self.logs.len() > 150 { self.logs.drain(0..50); }
+        if self.logs.len() > MAX_LOG_ENTRIES { self.logs.drain(0..LOG_DRAIN_COUNT); }
     }
 
     fn handle_lightning_strike(&mut self, pos: Vec2) {
@@ -236,7 +237,7 @@ impl World {
 
     pub fn log(&mut self, msg: String) {
         self.logs.push(msg);
-        if self.logs.len() > 150 { self.logs.drain(0..20); }
+        if self.logs.len() > MAX_LOG_ENTRIES { self.logs.drain(0..20); }
     }
 
     pub fn population_counts(&self) -> (usize, usize, usize) {

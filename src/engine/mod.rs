@@ -5,3 +5,5 @@ pub mod climate;
 pub mod events;
 pub mod evolution;
 pub mod species;
+pub mod config;
+pub mod stats;
