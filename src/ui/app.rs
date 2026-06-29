@@ -91,14 +91,19 @@ impl LifeSimApp {
             Tool::Select => {
                 let mut best_id = None;
                 let mut min_dist = 25.0f32;
-                for chunk in self.world.chunks.values() {
-                    for p in &chunk.plants {
-                        let d = world_pos.distance(p.position);
-                        if d < min_dist { min_dist = d; best_id = Some(p.id); }
-                    }
-                    for a in &chunk.animals {
-                        let d = world_pos.distance(a.position);
-                        if d < min_dist { min_dist = d; best_id = Some(a.id); }
+                let (cx, cy) = crate::engine::world::world_to_chunk_coords(world_pos);
+                for dx in -1..=1 {
+                    for dy in -1..=1 {
+                        if let Some(chunk) = self.world.chunks.get(&(cx + dx, cy + dy)) {
+                            for p in &chunk.plants {
+                                let d = world_pos.distance(p.position);
+                                if d < min_dist { min_dist = d; best_id = Some(p.id); }
+                            }
+                            for a in &chunk.animals {
+                                let d = world_pos.distance(a.position);
+                                if d < min_dist { min_dist = d; best_id = Some(a.id); }
+                            }
+                        }
                     }
                 }
                 self.selected_entity_id = best_id;
@@ -110,9 +115,13 @@ impl LifeSimApp {
             Tool::SpawnInsect   => { self.world.spawn_animal(AnimalType::Insect, world_pos, None); }
             Tool::SpawnFish     => { self.world.spawn_animal(AnimalType::Fish, world_pos, None); }
             Tool::AddSoilEnergy => {
-                for chunk in self.world.chunks.values_mut() {
-                    let chunk_left = chunk.id.0 as f32 * CHUNK_WORLD_SIZE;
-                    let chunk_top  = chunk.id.1 as f32 * CHUNK_WORLD_SIZE;
+                let (cx, cy) = crate::engine::world::world_to_chunk_coords(world_pos);
+                let brush_chunks = (self.brush_radius / CHUNK_WORLD_SIZE).ceil() as i32;
+                for dx in -brush_chunks..=brush_chunks {
+                    for dy in -brush_chunks..=brush_chunks {
+                        if let Some(chunk) = self.world.chunks.get_mut(&(cx + dx, cy + dy)) {
+                            let chunk_left = chunk.id.0 as f32 * CHUNK_WORLD_SIZE;
+                            let chunk_top  = chunk.id.1 as f32 * CHUNK_WORLD_SIZE;
                     for ty in 0..CHUNK_SIZE {
                         for tx in 0..CHUNK_SIZE {
                             let tp = Vec2::new(chunk_left + tx as f32 * TILE_SIZE + TILE_SIZE * 0.5,
@@ -123,12 +132,18 @@ impl LifeSimApp {
                             }
                         }
                     }
+                        }
+                    }
                 }
             }
             Tool::AddMoisture => {
-                for chunk in self.world.chunks.values_mut() {
-                    let chunk_left = chunk.id.0 as f32 * CHUNK_WORLD_SIZE;
-                    let chunk_top  = chunk.id.1 as f32 * CHUNK_WORLD_SIZE;
+                let (cx, cy) = crate::engine::world::world_to_chunk_coords(world_pos);
+                let brush_chunks = (self.brush_radius / CHUNK_WORLD_SIZE).ceil() as i32;
+                for dx in -brush_chunks..=brush_chunks {
+                    for dy in -brush_chunks..=brush_chunks {
+                        if let Some(chunk) = self.world.chunks.get_mut(&(cx + dx, cy + dy)) {
+                            let chunk_left = chunk.id.0 as f32 * CHUNK_WORLD_SIZE;
+                            let chunk_top  = chunk.id.1 as f32 * CHUNK_WORLD_SIZE;
                     for ty in 0..CHUNK_SIZE {
                         for tx in 0..CHUNK_SIZE {
                             let tp = Vec2::new(chunk_left + tx as f32 * TILE_SIZE + TILE_SIZE * 0.5,
@@ -139,13 +154,21 @@ impl LifeSimApp {
                             }
                         }
                     }
+                        }
+                    }
                 }
             }
             Tool::Kill => {
                 let br = self.brush_radius;
-                for chunk in self.world.chunks.values_mut() {
-                    chunk.plants.retain(|p| p.position.distance(world_pos) > br);
-                    chunk.animals.retain(|a| a.position.distance(world_pos) > br);
+                let (cx, cy) = crate::engine::world::world_to_chunk_coords(world_pos);
+                let brush_chunks = (self.brush_radius / CHUNK_WORLD_SIZE).ceil() as i32;
+                for dx in -brush_chunks..=brush_chunks {
+                    for dy in -brush_chunks..=brush_chunks {
+                        if let Some(chunk) = self.world.chunks.get_mut(&(cx + dx, cy + dy)) {
+                            chunk.plants.retain(|p| p.position.distance(world_pos) > br);
+                            chunk.animals.retain(|a| a.position.distance(world_pos) > br);
+                        }
+                    }
                 }
             }
         }

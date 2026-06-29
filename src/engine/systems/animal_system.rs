@@ -88,6 +88,7 @@ fn apply_animal_actions(
 
     let id_to_idx: HashMap<u64, usize> = updates.iter().enumerate().map(|(i, (a, _))| (a.id, i)).collect();
     let actions: Vec<_> = updates.iter().enumerate().map(|(i, (a, res))| (i, a.id, res.want_to_attack, res.want_to_breed_with)).collect();
+    let mut bred_this_tick = HashSet::new();
     for (i, id, want_attack, want_breed) in actions {
         if updates[i].1.died { continue; }
         if let Some(target_id) = want_attack {
@@ -105,7 +106,9 @@ fn apply_animal_actions(
         }
         if let Some(m_id) = want_breed {
             if let Some(&m_idx) = id_to_idx.get(&m_id) {
-                if !eaten_ids.contains(&m_id) && updates[m_idx].0.health > 0.0 && updates[i].0.energy > updates[i].0.genome.reproduction_threshold * 0.5 && updates[m_idx].0.energy > updates[m_idx].0.genome.reproduction_threshold * 0.5 {
+                if !bred_this_tick.contains(&id) && !bred_this_tick.contains(&m_id) && !eaten_ids.contains(&m_id) && updates[m_idx].0.health > 0.0 && updates[i].0.energy > updates[i].0.genome.reproduction_threshold * 0.5 && updates[m_idx].0.energy > updates[m_idx].0.genome.reproduction_threshold * 0.5 {
+                    bred_this_tick.insert(id);
+                    bred_this_tick.insert(m_id);
                     updates[i].0.energy -= updates[i].0.genome.reproduction_threshold * 0.3;
                     updates[m_idx].0.energy -= updates[m_idx].0.genome.reproduction_threshold * 0.3;
                     updates[i].0.last_reproduction = 0; updates[m_idx].0.last_reproduction = 0;

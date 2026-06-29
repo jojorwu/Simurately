@@ -137,20 +137,30 @@ impl World {
         }
     }
 
-    fn handle_lightning_strike(&mut self, pos: Vec2) {
+    fn handle_lightning_strike(&mut self, _pos: Vec2) {
         let mut rng = rand::thread_rng();
-        let lx = pos.x * CHUNK_WORLD_SIZE + rng.gen_range(0.0..CHUNK_WORLD_SIZE);
-        let ly = pos.y * CHUNK_WORLD_SIZE + rng.gen_range(0.0..CHUNK_WORLD_SIZE);
+        if self.chunks.is_empty() { return; }
+        let keys: Vec<_> = self.chunks.keys().cloned().collect();
+        let coords = keys[rng.gen_range(0..keys.len())];
+
+        let lx = coords.0 as f32 * CHUNK_WORLD_SIZE + rng.gen_range(0.0..CHUNK_WORLD_SIZE);
+        let ly = coords.1 as f32 * CHUNK_WORLD_SIZE + rng.gen_range(0.0..CHUNK_WORLD_SIZE);
         let lpos = Vec2::new(lx, ly);
+
         self.log(format!("⚡ Удар молнии в ({:.0}, {:.0})!", lx, ly));
         self.climate.lightning_strike = Some((lpos, 6));
 
-        for chunk in self.chunks.values_mut() {
-            for plant in &mut chunk.plants {
-                if plant.position.distance(lpos) < 50.0 { plant.health -= 40.0; }
-            }
-            for animal in &mut chunk.animals {
-                if animal.position.distance(lpos) < 50.0 { animal.health -= 50.0; }
+        let (cx, cy) = world_to_chunk_coords(lpos);
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                if let Some(chunk) = self.chunks.get_mut(&(cx + dx, cy + dy)) {
+                    for plant in &mut chunk.plants {
+                        if plant.position.distance(lpos) < 50.0 { plant.health -= 40.0; }
+                    }
+                    for animal in &mut chunk.animals {
+                        if animal.position.distance(lpos) < 50.0 { animal.health -= 50.0; }
+                    }
+                }
             }
         }
     }
@@ -223,12 +233,8 @@ impl World {
             }
         }
 
-        for spec in self.evolution_manager.species_registry.values_mut() {
-            if spec.population == 0 && spec.active {
-                spec.active = false;
-                self.logs.push(format!("[Тик {}] ВЫМИРАНИЕ: Вид '{}' исчез! (прожил {} тиков)", self.tick_count, spec.name, self.tick_count - spec.founded_at_tick));
-            } else if spec.population > 0 && !spec.active { spec.active = true; }
-        }
+        let logs = self.evolution_manager.update_populations(self.tick_count);
+        for log in logs { self.log(log); }
 
         let active_species = self.evolution_manager.species_registry.values().filter(|s| s.active).count();
         self.stats.record_history(plants, insects, fish, active_species);

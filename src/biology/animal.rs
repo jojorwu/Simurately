@@ -168,12 +168,8 @@ impl Animal {
     }
 
     fn handle_terrain_effects(&mut self, is_water_tile: bool) {
-        let wrong_terrain = match self.animal_type {
-            AnimalType::Insect => is_water_tile && self.genome.aquatic_adaptation < 0.4,
-            AnimalType::Fish => !is_water_tile && self.genome.aquatic_adaptation > 0.6,
-        };
-        if wrong_terrain {
-            let adaptation = if is_water_tile { self.genome.aquatic_adaptation } else { 1.0 - self.genome.aquatic_adaptation };
+        let adaptation = if is_water_tile { self.genome.aquatic_adaptation } else { 1.0 - self.genome.aquatic_adaptation };
+        if adaptation < 0.7 {
             self.health -= WRONG_TERRAIN_HEALTH_LOSS * (1.0 - adaptation);
         }
     }
