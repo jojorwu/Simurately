@@ -24,8 +24,6 @@ pub struct Chunk {
     pub animals: Vec<Animal>,
     pub active: bool,
     pub last_updated_tile_idx: usize,
-    pub plant_grid: Vec<Vec<usize>>,
-    pub animal_grid: Vec<Vec<usize>>,
 }
 
 #[derive(Default)]
@@ -57,7 +55,7 @@ impl Chunk {
                 tiles.push(Tile { tile_type, energy, moisture, temperature: temp });
             }
         }
-        Self { id, tiles, plants: Vec::new(), animals: Vec::new(), active: true, last_updated_tile_idx: 0, plant_grid: vec![Vec::new(); CHUNK_SIZE * CHUNK_SIZE], animal_grid: vec![Vec::new(); CHUNK_SIZE * CHUNK_SIZE] }
+        Self { id, tiles, plants: Vec::new(), animals: Vec::new(), active: true, last_updated_tile_idx: 0 }
     }
 
     pub fn tick(&mut self, mutation_rate: f32, next_entity_id: &AtomicU64, climate: &Climate, tick_count: u64, _bucket_index: usize) -> ChunkTickResult {
@@ -117,26 +115,31 @@ impl Chunk {
     }
 
     fn apply_animal_actions(&mut self, updates: &mut [(Animal, AnimalUpdateResult)], eaten_ids: &mut std::collections::HashSet<u64>, ctx: &TickContext, result: &mut ChunkTickResult) {
+        let mut dead_plants = std::collections::HashSet::new();
         for i in 0..updates.len() {
             if updates[i].1.died { continue; }
             if let Some(p_idx) = updates[i].1.want_to_eat_plant_idx {
-                if p_idx < self.plants.len() {
+                if p_idx < self.plants.len() && !dead_plants.contains(&p_idx) {
                     let plant = &mut self.plants[p_idx];
                     let eat_amount = (plant.energy * 0.5).min(plant.nutritional_value() + updates[i].0.genome.size * 1.5);
                     plant.energy -= eat_amount;
                     let digestion = (1.0 - updates[i].0.genome.diet).clamp(0.2, 1.0) * updates[i].0.genome.digestion_efficiency;
                     if plant.is_poisonous { updates[i].0.health -= 10.0 * (1.0 - updates[i].0.genome.digestion_efficiency); }
                     else { updates[i].0.energy = (updates[i].0.energy + eat_amount * digestion).min(updates[i].0.genome.reproduction_threshold * 3.0); }
-                    if self.plants[p_idx].energy <= 0.0 { self.plants.swap_remove(p_idx); }
+                    if plant.energy <= 0.0 { dead_plants.insert(p_idx); }
                 }
             }
         }
+        let mut sorted_dead_plants: Vec<_> = dead_plants.into_iter().collect();
+        sorted_dead_plants.sort_unstable_by(|a, b| b.cmp(a));
+        for idx in sorted_dead_plants { self.plants.swap_remove(idx); }
 
+        let id_to_idx: std::collections::HashMap<u64, usize> = updates.iter().enumerate().map(|(i, (a, _))| (a.id, i)).collect();
         let actions: Vec<_> = updates.iter().enumerate().map(|(i, (a, res))| (i, a.id, res.want_to_attack, res.want_to_breed_with)).collect();
         for (i, id, want_attack, want_breed) in actions {
             if updates[i].1.died { continue; }
             if let Some(target_id) = want_attack {
-                if let Some(target_idx) = updates.iter().position(|(a, _)| a.id == target_id) {
+                if let Some(&target_idx) = id_to_idx.get(&target_id) {
                     if !eaten_ids.contains(&target_id) && updates[target_idx].0.health > 0.0 {
                         let damage = (updates[i].0.genome.size * 15.0 - updates[target_idx].0.genome.size * 5.0).max(5.0);
                         updates[target_idx].0.health -= damage;
@@ -149,7 +152,7 @@ impl Chunk {
                 }
             }
             if let Some(m_id) = want_breed {
-                if let Some(m_idx) = updates.iter().position(|(a, _)| a.id == m_id) {
+                if let Some(&m_idx) = id_to_idx.get(&m_id) {
                     if !eaten_ids.contains(&m_id) && updates[m_idx].0.health > 0.0 && updates[i].0.energy > updates[i].0.genome.reproduction_threshold * 0.5 && updates[m_idx].0.energy > updates[m_idx].0.genome.reproduction_threshold * 0.5 {
                         updates[i].0.energy -= updates[i].0.genome.reproduction_threshold * 0.3;
                         updates[m_idx].0.energy -= updates[m_idx].0.genome.reproduction_threshold * 0.3;

@@ -197,45 +197,50 @@ impl Animal {
         plants: &[(usize, Vec2, f32, bool)],
         nearby_animals: &[(u64, Vec2, AnimalType, f32, f32, f32, f32, u32, f32)],
     ) -> SensoryData {
-        let vision = self.genome.vision_range;
+        let vision_sq = self.genome.vision_range * self.genome.vision_range;
+        let mut nearest_predator = None;
+        let mut min_pred_d2 = vision_sq;
+        let mut nearest_prey = None;
+        let mut min_prey_d2 = vision_sq;
+        let mut nearest_mate = None;
+        let mut min_mate_d2 = vision_sq;
 
-        let nearest_predator = nearby_animals.iter()
-            .filter(|(id, pos, t, size, diet, aggression, _, _, _)| {
-                *id != self.id && pos.distance(self.position) < vision && self.is_threatened_by(*t, *size, *diet, *aggression)
-            })
-            .map(|(_, pos, _, _, _, _, _, _, _)| (*pos, pos.distance(self.position)))
-            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        for (id, pos, t, size, diet, aggression, energy, spec_id, _) in nearby_animals {
+            if *id == self.id { continue; }
+            let d2 = pos.distance_squared(self.position);
+            if d2 >= vision_sq { continue; }
 
-        let nearest_prey = if self.genome.diet > 0.4 {
-            nearby_animals.iter()
-                .filter(|(id, pos, t, size, _, _, prey_energy, _, _)| {
-                    *id != self.id && pos.distance(self.position) < vision && self.can_eat_animal(*t, *size) && *prey_energy > 0.0
-                })
-                .map(|(id, pos, _, _, _, _, _, _, _)| (*id, *pos, pos.distance(self.position)))
-                .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
-        } else { None };
+            if d2 < min_pred_d2 && self.is_threatened_by(*t, *size, *diet, *aggression) {
+                min_pred_d2 = d2;
+                nearest_predator = Some((*pos, d2.sqrt()));
+            }
+            if d2 < min_prey_d2 && self.genome.diet > 0.4 && self.can_eat_animal(*t, *size) && *energy > 0.0 {
+                min_prey_d2 = d2;
+                nearest_prey = Some((*id, *pos, d2.sqrt()));
+            }
+            if d2 < min_mate_d2 && *t == self.animal_type && *spec_id == self.genome.species_id && *energy > self.genome.reproduction_threshold * 0.6 {
+                min_mate_d2 = d2;
+                nearest_mate = Some((*id, *pos, d2.sqrt()));
+            }
+        }
 
         let nearest_plant = if self.genome.diet < 0.7 {
             plants.iter()
-                .filter(|(_, pos, energy, _)| pos.distance(self.position) < vision && *energy > 5.0)
-                .map(|(idx, pos, energy, _)| (*idx, *pos, pos.distance(self.position)))
+                .filter_map(|(idx, pos, energy, _)| {
+                    let d2 = pos.distance_squared(self.position);
+                    if d2 < vision_sq && *energy > 5.0 { Some((*idx, *pos, d2)) } else { None }
+                })
                 .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+                .map(|(idx, pos, d2)| (idx, pos, d2.sqrt()))
         } else { None };
 
-        let nearest_mate = nearby_animals.iter()
-            .filter(|(id, pos, t, _, _, _, mate_energy, spec_id, _)| {
-                *id != self.id && *t == self.animal_type && *spec_id == self.genome.species_id && pos.distance(self.position) < vision && *mate_energy > self.genome.reproduction_threshold * 0.6
-            })
-            .map(|(id, pos, _, _, _, _, _, _, _)| (*id, *pos, pos.distance(self.position)))
-            .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
-
         let flock_center = if self.genome.sociality > 0.5 {
-            let neighbors: Vec<Vec2> = nearby_animals.iter()
+            let (sum, count) = nearby_animals.iter()
                 .filter(|(id, pos, t, _, _, _, _, spec_id, _)| {
-                    *id != self.id && *t == self.animal_type && *spec_id == self.genome.species_id && pos.distance(self.position) < vision * 0.8
+                    *id != self.id && *t == self.animal_type && *spec_id == self.genome.species_id && pos.distance_squared(self.position) < vision_sq * 0.64
                 })
-                .map(|(_, pos, _, _, _, _, _, _, _)| *pos).collect();
-            if neighbors.len() >= 2 { Some(neighbors.iter().sum::<Vec2>() / neighbors.len() as f32) } else { None }
+                .fold((Vec2::ZERO, 0), |(s, c), (_, pos, _, _, _, _, _, _, _)| (s + *pos, c + 1));
+            if count >= 2 { Some(sum / count as f32) } else { None }
         } else { None };
 
         SensoryData { nearest_predator, nearest_prey, nearest_plant, nearest_mate, flock_center }
