@@ -7,7 +7,7 @@ use crate::ui::tool::Tool;
 use crate::biology::plant::PlantType;
 use crate::biology::animal::{AnimalType, AiState};
 use crate::engine::tile::TileType;
-use crate::engine::chunk::{CHUNK_WORLD_SIZE, TILE_SIZE, CHUNK_SIZE};
+use crate::engine::config::{CHUNK_WORLD_SIZE, TILE_SIZE, CHUNK_SIZE};
 use crate::engine::climate::WeatherType;
 
 pub fn handle_camera_input(app: &mut LifeSimApp, response: &egui::Response, ui: &egui::Ui) {
@@ -164,7 +164,7 @@ pub fn draw_plants(
 ) {
     for chunk in visible {
         for plant in &chunk.plants {
-            let sp = to_screen(Vec2::new(plant.position.0, plant.position.1));
+            let sp = to_screen(plant.position);
             if rect.contains(sp) {
                 draw_single_plant(app, painter, plant, sp);
             }

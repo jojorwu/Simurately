@@ -10,9 +10,10 @@ use crate::biology::animal::AnimalType;
 use crate::engine::tile::TileType;
 use crate::engine::climate::Climate;
 use crate::engine::events::WorldEvent;
-use crate::stats::StatsManager;
-use crate::engine::chunk::{Chunk, ChunkTickResult, CHUNK_WORLD_SIZE, world_to_tile_index};
+use crate::engine::stats::StatsManager;
+use crate::engine::chunk::{Chunk, ChunkTickResult, world_to_tile_index};
 use crate::engine::evolution::EvolutionManager;
+use crate::engine::config::*;
 
 pub fn world_to_chunk_coords(pos: Vec2) -> (i32, i32) {
     (
@@ -26,7 +27,7 @@ pub struct World {
     pub next_entity_id: AtomicU64,
     pub mutation_rate: f32,
     pub tick_count: u64,
-    pub logs: Vec<String>,
+    pub logs: crate::engine::stats::EventLog,
     pub climate: Climate,
     pub evolution_manager: EvolutionManager,
     pub stats: StatsManager,
@@ -45,7 +46,7 @@ impl World {
             next_entity_id: AtomicU64::new(1),
             mutation_rate: 0.05,
             tick_count: 0,
-            logs: vec!["Симуляция запущена".to_string()],
+            logs: crate::engine::stats::EventLog::new(),
             climate: Climate::new(),
             evolution_manager: EvolutionManager::new(),
             stats: StatsManager::new(),
@@ -97,7 +98,7 @@ impl World {
         if let Some(chunk) = self.chunks.get_mut(&(cx, cy)) {
             let id = self.next_entity_id.fetch_add(1, Ordering::Relaxed);
             let gen_data = genome.unwrap_or_else(Genome::random);
-            chunk.plants.push(crate::biology::plant::Plant::new(id, plant_type, gen_data, (pos.x, pos.y)));
+        chunk.plants.push(crate::biology::plant::Plant::new(id, plant_type, gen_data, pos));
         }
     }
 
@@ -130,11 +131,10 @@ impl World {
         let climate_events = self.climate.tick(self.tick_count);
         for event in climate_events {
             match event {
-                WorldEvent::WeatherChanged(msg) | WorldEvent::SeasonChanged(msg) => self.logs.push(msg),
+                WorldEvent::WeatherChanged(msg) | WorldEvent::SeasonChanged(msg) => self.log(msg),
                 WorldEvent::LightningStrike(pos) => self.handle_lightning_strike(pos),
             }
         }
-        if self.logs.len() > 150 { self.logs.drain(0..50); }
     }
 
     fn handle_lightning_strike(&mut self, pos: Vec2) {
@@ -147,7 +147,7 @@ impl World {
 
         for chunk in self.chunks.values_mut() {
             for plant in &mut chunk.plants {
-                if Vec2::new(plant.position.0, plant.position.1).distance(lpos) < 50.0 { plant.health -= 40.0; }
+                if plant.position.distance(lpos) < 50.0 { plant.health -= 40.0; }
             }
             for animal in &mut chunk.animals {
                 if animal.position.distance(lpos) < 50.0 { animal.health -= 50.0; }
@@ -193,11 +193,11 @@ impl World {
             if let Some(chunk) = self.chunks.get_mut(&coords) { chunk.animals.push(animal); }
         }
 
-        for (sx, sy, ptype, genome) in seeds_to_spawn {
-            let coords = world_to_chunk_coords(Vec2::new(sx, sy));
+        for (pos, ptype, genome) in seeds_to_spawn {
+            let coords = world_to_chunk_coords(pos);
             self.add_chunk(coords.0, coords.1);
             if let Some(chunk) = self.chunks.get_mut(&coords) {
-                let tile_idx = world_to_tile_index(Vec2::new(sx, sy), coords);
+                let tile_idx = world_to_tile_index(pos, coords);
                 let tile = &chunk.tiles[tile_idx];
                 let can_grow = match ptype {
                     PlantType::Mushroom => tile.tile_type == TileType::Soil && tile.moisture > 0.5,
@@ -205,7 +205,7 @@ impl World {
                 };
                 if can_grow {
                     let id = self.next_entity_id.fetch_add(1, Ordering::Relaxed);
-                    chunk.plants.push(crate::biology::plant::Plant::new(id, ptype, genome, (sx, sy)));
+                    chunk.plants.push(crate::biology::plant::Plant::new(id, ptype, genome, pos));
                 }
             }
         }
@@ -236,7 +236,6 @@ impl World {
 
     pub fn log(&mut self, msg: String) {
         self.logs.push(msg);
-        if self.logs.len() > 150 { self.logs.drain(0..20); }
     }
 
     pub fn population_counts(&self) -> (usize, usize, usize) {

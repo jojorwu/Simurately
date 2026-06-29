@@ -1,3 +1,22 @@
+use crate::engine::config::MAX_LOG_ENTRIES;
+
+pub struct EventLog {
+    pub entries: Vec<String>,
+}
+
+impl EventLog {
+    pub fn new() -> Self {
+        Self { entries: Vec::new() }
+    }
+
+    pub fn push(&mut self, msg: String) {
+        self.entries.push(msg);
+        if self.entries.len() > MAX_LOG_ENTRIES {
+            self.entries.drain(0..20);
+        }
+    }
+}
+
 pub struct StatsManager {
     pub plant_count_history: Vec<f32>,
     pub insect_count_history: Vec<f32>,

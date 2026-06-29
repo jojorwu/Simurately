@@ -1,7 +1,6 @@
 pub mod engine;
 pub mod biology;
 pub mod ui;
-pub mod stats;
 
 #[cfg(test)]
 mod tests {

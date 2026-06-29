@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::genome::Genome;
 use glam::Vec2;
 use rand::Rng;
+use crate::engine::config::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AnimalType {
@@ -174,21 +175,21 @@ impl Animal {
         };
         if wrong_terrain {
             let adaptation = if is_water_tile { self.genome.aquatic_adaptation } else { 1.0 - self.genome.aquatic_adaptation };
-            self.health -= 2.5 * (1.0 - adaptation);
+            self.health -= WRONG_TERRAIN_HEALTH_LOSS * (1.0 - adaptation);
         }
     }
 
     fn handle_starvation_and_regen(&mut self) {
         if self.energy <= 0.0 {
             self.energy = 0.0;
-            self.health -= 1.0;
+            self.health -= STARVATION_HEALTH_LOSS;
         }
 
         let max_hp = self.genome.max_health();
-        if self.energy > self.genome.reproduction_threshold * 0.5 && self.health < max_hp {
-            let regen = 0.4 * self.genome.digestion_efficiency;
+        if self.energy > self.genome.reproduction_threshold * REGEN_ENERGY_THRESHOLD_FACTOR && self.health < max_hp {
+            let regen = REGEN_BASE_RATE * self.genome.digestion_efficiency;
             self.health = (self.health + regen).min(max_hp);
-            self.energy -= regen * 0.3;
+            self.energy -= regen * REGEN_ENERGY_COST_FACTOR;
         }
     }
 
@@ -251,7 +252,7 @@ impl Animal {
             let threat_power = 1.0;
             let my_power = self.genome.size * self.genome.speed;
             let danger_ratio = threat_power / (my_power * self.genome.fear_threshold).max(0.1);
-            if danger_ratio > 0.6 || pred_dist < 60.0 {
+            if danger_ratio > 0.6 || pred_dist < FLEE_DIST_THRESHOLD {
                 self.current_state = AiState::Flee;
                 self.memory_threat_pos = Some(pred_pos);
                 steer = (self.position - pred_pos).normalize_or_zero() * self.genome.speed - self.velocity;
@@ -265,7 +266,7 @@ impl Animal {
         if steer == Vec2::ZERO && self.genome.diet > 0.5 && hunger_ratio < 1.5 {
             if let Some((prey_id, prey_pos, prey_dist)) = sensors.nearest_prey {
                 self.current_state = AiState::Hunt;
-                if prey_dist < self.genome.size * 8.0 + 10.0 { actions.want_to_attack = Some(prey_id); }
+                if prey_dist < self.genome.size * ATTACK_RANGE_SIZE_MULT + ATTACK_RANGE_BASE { actions.want_to_attack = Some(prey_id); }
                 else { steer = self.seek(prey_pos); }
             }
         }
@@ -276,7 +277,7 @@ impl Animal {
             if let Some((plant_idx, plant_pos)) = food_target {
                 self.current_state = AiState::Forage;
                 if plant_idx != usize::MAX { self.memory_food_pos = Some(plant_pos); }
-                if self.position.distance(plant_pos) < self.genome.size * 6.0 + 12.0 {
+                if self.position.distance(plant_pos) < self.genome.size * EAT_RANGE_SIZE_MULT + EAT_RANGE_BASE {
                     actions.want_to_eat_plant_idx = if plant_idx != usize::MAX { Some(plant_idx) } else { None };
                     self.memory_food_pos = None;
                 } else { steer = self.seek(plant_pos); }
@@ -287,7 +288,7 @@ impl Animal {
         if steer == Vec2::ZERO && self.energy > self.genome.reproduction_threshold && self.last_reproduction > self.genome.reproduction_cooldown as u32 && !self.is_pregnant {
             if let Some((mate_id, mate_pos, mate_dist)) = sensors.nearest_mate {
                 self.current_state = AiState::Mate;
-                if mate_dist < 15.0 { actions.want_to_breed_with = Some(mate_id); }
+                if mate_dist < MATE_RANGE { actions.want_to_breed_with = Some(mate_id); }
                 else { steer = self.seek(mate_pos); }
             }
         }
@@ -298,8 +299,8 @@ impl Animal {
                 self.current_state = AiState::Flock;
                 self.flocking_target = Some(center);
                 let dist = self.position.distance(center);
-                if dist > 60.0 { steer = self.seek(center) * self.genome.sociality; }
-                else if dist < 20.0 { steer = (self.position - center).normalize_or_zero() * self.genome.speed * 0.3; }
+                if dist > FLOCK_DIST_TARGET { steer = self.seek(center) * self.genome.sociality; }
+                else if dist < SEPARATION_DIST { steer = (self.position - center).normalize_or_zero() * self.genome.speed * 0.3; }
             }
         }
 
