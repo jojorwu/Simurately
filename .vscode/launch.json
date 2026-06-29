@@ -1,0 +1,42 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug (Life Simulation)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=life_sim",
+                    "--package=life_sim"
+                ],
+                "filter": {
+                    "name": "life_sim",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release (Life Simulation)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--release",
+                    "--bin=life_sim",
+                    "--package=life_sim"
+                ],
+                "filter": {
+                    "name": "life_sim",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
