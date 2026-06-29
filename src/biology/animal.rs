@@ -142,6 +142,7 @@ impl Animal {
 
     fn handle_metabolism(&mut self, wind_speed: f32, humidity: f32) {
         let move_spd = self.velocity.length();
+        let current_size = self.current_size();
 
         if move_spd > self.genome.speed * 0.6 {
             self.fatigue = (self.fatigue + 0.3).min(100.0);
@@ -149,7 +150,7 @@ impl Animal {
             self.fatigue = (self.fatigue - 0.5).max(0.0);
         }
 
-        let base_metabolism = self.genome.metabolism * (0.5 + 0.5 * self.genome.size)
+        let base_metabolism = self.genome.metabolism * (0.5 + 0.5 * current_size)
             + move_spd * move_spd * 0.008;
 
         let weather_mult = match self.animal_type {
@@ -278,6 +279,16 @@ impl Animal {
 
     pub fn gestation_period(&self) -> u32 {
         (60.0 + self.genome.offspring_count * 20.0 + self.genome.size * 15.0) as u32
+    }
+
+    pub fn current_size(&self) -> f32 {
+        let maturation_age = self.gestation_period() * 4;
+        if self.age < maturation_age {
+            let t = self.age as f32 / maturation_age as f32;
+            self.genome.size * (0.3 + 0.7 * t)
+        } else {
+            self.genome.size
+        }
     }
 
     pub fn is_dead(&self) -> bool {

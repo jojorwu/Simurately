@@ -11,3 +11,8 @@ rand = "0.8.5"
 eframe = "0.27.2"
 egui_plot = "0.27.2"
 
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"

@@ -114,9 +114,10 @@ fn draw_single_plant(app: &LifeSimApp, painter: &egui::Painter, plant: &crate::b
 }
 
 fn draw_single_animal(app: &LifeSimApp, painter: &egui::Painter, animal: &crate::biology::animal::Animal, sp: egui::Pos2) {
+    let current_size = animal.current_size();
     let size = match animal.animal_type {
-        AnimalType::Insect => 3.0 + animal.genome.size * 0.8,
-        AnimalType::Fish => 4.5 + animal.genome.size * 1.5,
+        AnimalType::Insect => 3.0 + current_size * 0.8,
+        AnimalType::Fish => 4.5 + current_size * 1.5,
     };
     let fill = if app.settings.show_genome_colors {
         egui::Color32::from_rgb((animal.genome.color_r * 255.0) as u8, (animal.genome.color_g * 255.0) as u8, (animal.genome.color_b * 255.0) as u8)

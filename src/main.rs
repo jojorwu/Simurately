@@ -34,6 +34,16 @@ mod tests {
         assert!(res.offspring_count > 0);
         assert!(!animal.is_pregnant);
     }
+
+    #[test]
+    fn test_evolution_distance() {
+        use crate::biology::genome::Genome;
+        let g1 = Genome::default_insect();
+        let mut g2 = g1;
+        assert_eq!(g1.genetic_distance(&g2), 0.0);
+        g2.speed += 1.0;
+        assert!(g1.genetic_distance(&g2) > 0.0);
+    }
 }
 
 use eframe::egui;

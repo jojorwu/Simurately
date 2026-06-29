@@ -52,6 +52,14 @@ pub struct Genome {
     pub color_g: f32,
     pub color_b: f32,
 
+    // ---- Генетика поведения ----
+    /// При какой опасности убегать (0.5..3.0)
+    pub fear_factor: f32,
+    /// При каком голоде начинать охоту (0.8..2.5)
+    pub hunt_threshold: f32,
+    /// Насколько далеко готов идти ради партнера (0.5..2.5)
+    pub mating_drive: f32,
+
     // ---- Метаданные вида ----
     pub generation: u32,
     pub species_id: u32,
@@ -78,6 +86,9 @@ impl Genome {
             storm_resistance: 0.2,
             aquatic_adaptation: 0.05,
             color_r: 0.6, color_g: 0.8, color_b: 0.3,
+            fear_factor: 1.0,
+            hunt_threshold: 1.2,
+            mating_drive: 1.0,
             generation: 1,
             species_id: 0,
         }
@@ -103,6 +114,9 @@ impl Genome {
             storm_resistance: 0.6,
             aquatic_adaptation: 0.95,
             color_r: 0.2, color_g: 0.5, color_b: 0.9,
+            fear_factor: 1.2,
+            hunt_threshold: 1.5,
+            mating_drive: 1.5,
             generation: 1,
             species_id: 0,
         }
@@ -131,6 +145,9 @@ impl Genome {
             color_r: rng.gen_range(0.1..1.0),
             color_g: rng.gen_range(0.1..1.0),
             color_b: rng.gen_range(0.1..1.0),
+            fear_factor: rng.gen_range(0.5..3.0),
+            hunt_threshold: rng.gen_range(0.8..2.5),
+            mating_drive: rng.gen_range(0.5..2.5),
             generation: 1,
             species_id: 0,
         }
@@ -166,6 +183,9 @@ impl Genome {
             color_r: (parent1.color_r + parent2.color_r) / 2.0,
             color_g: (parent1.color_g + parent2.color_g) / 2.0,
             color_b: (parent1.color_b + parent2.color_b) / 2.0,
+            fear_factor: mix(parent1.fear_factor, parent2.fear_factor),
+            hunt_threshold: mix(parent1.hunt_threshold, parent2.hunt_threshold),
+            mating_drive: mix(parent1.mating_drive, parent2.mating_drive),
             generation: parent1.generation.max(parent2.generation) + 1,
             species_id: parent1.species_id,
         };
@@ -180,12 +200,17 @@ impl Genome {
 
         let mut mg = |gene: &mut f32, min: f32, max: f32| {
             if rng.gen_range(0.0f32..1.0) < mutation_rate {
-                // Случайная мутация: либо небольшое смещение (80%), либо полный сброс (20%)
-                if rng.gen_range(0.0f32..1.0) < 0.8 {
-                    let delta = rng.gen_range(-0.15..0.15);
+                let roll = rng.gen_range(0.0f32..1.0);
+                if roll < 0.85 {
+                    // Обычная мутация: небольшое смещение
+                    let delta = rng.gen_range(-0.12..0.12);
                     *gene = (*gene * (1.0 + delta)).clamp(min, max);
+                } else if roll < 0.98 {
+                    // Точечная мутация: существенное изменение
+                    let shift = (max - min) * rng.gen_range(-0.3..0.3);
+                    *gene = (*gene + shift).clamp(min, max);
                 } else {
-                    // Большой прыжок — редкое событие
+                    // Редкий "макро-скачок": полный сброс гена
                     *gene = rng.gen_range(min..max);
                 }
             }
@@ -210,6 +235,9 @@ impl Genome {
         mg(&mut self.color_r, 0.0, 1.0);
         mg(&mut self.color_g, 0.0, 1.0);
         mg(&mut self.color_b, 0.0, 1.0);
+        mg(&mut self.fear_factor, 0.5, 3.0);
+        mg(&mut self.hunt_threshold, 0.8, 2.5);
+        mg(&mut self.mating_drive, 0.5, 2.5);
     }
 
     /// Эвклидово расстояние между двумя геномами (нормированное к 0..1)
@@ -232,6 +260,9 @@ impl Genome {
             self.color_r - other.color_r,
             self.color_g - other.color_g,
             self.color_b - other.color_b,
+            (self.fear_factor - other.fear_factor) / 3.0,
+            (self.hunt_threshold - other.hunt_threshold) / 2.5,
+            (self.mating_drive - other.mating_drive) / 2.5,
         ];
         let sum_sq: f32 = diffs.iter().map(|d| d * d).sum();
         sum_sq.sqrt()

@@ -69,7 +69,7 @@ fn apply_animal_actions(
 ) {
     let mut dead_plants = HashSet::new();
     for (animal, res) in &mut updates {
-        if res.died { continue; }
+        if res.died || eaten_ids.contains(&animal.id) { continue; }
         if let Some(p_idx) = res.want_to_eat_plant_idx {
             if p_idx < plants.len() && !dead_plants.contains(&p_idx) {
                 let plant = &mut plants[p_idx];
@@ -90,7 +90,7 @@ fn apply_animal_actions(
     let actions: Vec<_> = updates.iter().enumerate().map(|(i, (a, res))| (i, a.id, res.want_to_attack, res.want_to_breed_with)).collect();
     let mut bred_this_tick = HashSet::new();
     for (i, id, want_attack, want_breed) in actions {
-        if updates[i].1.died { continue; }
+        if updates[i].1.died || eaten_ids.contains(&id) { continue; }
         if let Some(target_id) = want_attack {
             if let Some(&target_idx) = id_to_idx.get(&target_id) {
                 if !eaten_ids.contains(&target_id) && updates[target_idx].0.health > 0.0 {
