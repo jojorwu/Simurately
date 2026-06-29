@@ -10,6 +10,9 @@ pub const MAX_LOG_ENTRIES: usize = 150;
 pub const LOG_DRAIN_COUNT: usize = 50;
 pub const STATS_HISTORY_SIZE: usize = 600;
 
+pub const GRID_CELL_SIZE: f32 = 40.0;
+pub const GRID_WIDTH: usize = (CHUNK_WORLD_SIZE / GRID_CELL_SIZE) as usize + 1;
+
 // AI and Combat
 pub const ATTACK_RANGE_BASE: f32 = 10.0;
 pub const ATTACK_RANGE_SIZE_MULT: f32 = 8.0;

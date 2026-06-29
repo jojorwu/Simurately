@@ -24,6 +24,8 @@ pub struct Chunk {
     pub animals: Vec<Animal>,
     pub active: bool,
     pub last_updated_tile_idx: usize,
+    pub plant_spatial_grid: Vec<Vec<usize>>,
+    pub animal_spatial_grid: Vec<Vec<usize>>,
 }
 
 pub struct ChunkTickResult {
@@ -54,7 +56,33 @@ impl Chunk {
                 tiles.push(Tile { tile_type, energy, moisture, temperature: temp });
             }
         }
-        Self { id, tiles, plants: Vec::new(), animals: Vec::new(), active: true, last_updated_tile_idx: 0 }
+        Self {
+            id, tiles, plants: Vec::new(), animals: Vec::new(), active: true, last_updated_tile_idx: 0,
+            plant_spatial_grid: vec![Vec::new(); GRID_WIDTH * GRID_WIDTH],
+            animal_spatial_grid: vec![Vec::new(); GRID_WIDTH * GRID_WIDTH],
+        }
+    }
+
+    fn update_spatial_grids(&mut self) {
+        for cell in self.plant_spatial_grid.iter_mut() { cell.clear(); }
+        for cell in self.animal_spatial_grid.iter_mut() { cell.clear(); }
+        let left = self.id.0 as f32 * CHUNK_WORLD_SIZE;
+        let top = self.id.1 as f32 * CHUNK_WORLD_SIZE;
+
+        for (i, p) in self.plants.iter().enumerate() {
+            let gx = ((p.position.x - left) / GRID_CELL_SIZE).floor() as i32;
+            let gy = ((p.position.y - top) / GRID_CELL_SIZE).floor() as i32;
+            if gx >= 0 && gx < GRID_WIDTH as i32 && gy >= 0 && gy < GRID_WIDTH as i32 {
+                self.plant_spatial_grid[(gy * GRID_WIDTH as i32 + gx) as usize].push(i);
+            }
+        }
+        for (i, a) in self.animals.iter().enumerate() {
+            let gx = ((a.position.x - left) / GRID_CELL_SIZE).floor() as i32;
+            let gy = ((a.position.y - top) / GRID_CELL_SIZE).floor() as i32;
+            if gx >= 0 && gx < GRID_WIDTH as i32 && gy >= 0 && gy < GRID_WIDTH as i32 {
+                self.animal_spatial_grid[(gy * GRID_WIDTH as i32 + gx) as usize].push(i);
+            }
+        }
     }
 
     pub fn tick(&mut self, mutation_rate: f32, next_entity_id: &AtomicU64, climate: &Climate, tick_count: u64, _bucket_index: usize) -> ChunkTickResult {
@@ -76,6 +104,7 @@ impl Chunk {
             died_animal_ids: Vec::new(),
         };
 
+        self.update_spatial_grids();
         self.update_tiles(ctx.climate);
         self.update_plants(&ctx, &mut result);
         self.update_animals(&ctx, &mut result);
@@ -114,10 +143,35 @@ impl Chunk {
     fn update_animals(&mut self, ctx: &TickContext, result: &mut ChunkTickResult) {
         let animal_snaps: Vec<_> = self.animals.iter().map(|a| (a.id, a.position, a.animal_type, a.genome.size, a.genome.diet, a.genome.aggression, a.energy, a.genome.species_id, a.genome.aquatic_adaptation)).collect();
         let plant_snaps: Vec<_> = self.plants.iter().enumerate().map(|(i, p)| (i, p.position, p.energy, p.is_poisonous)).collect();
+
+        let chunk_left = self.id.0 as f32 * CHUNK_WORLD_SIZE;
+        let chunk_top = self.id.1 as f32 * CHUNK_WORLD_SIZE;
+
         let mut updates = Vec::with_capacity(self.animals.len());
-        for mut animal in std::mem::take(&mut self.animals) {
+        for (i, mut animal) in std::mem::take(&mut self.animals).into_iter().enumerate() {
+            let gx = ((animal.position.x - chunk_left) / GRID_CELL_SIZE).floor() as i32;
+            let gy = ((animal.position.y - chunk_top) / GRID_CELL_SIZE).floor() as i32;
+
+            let mut nearby_animal_indices = Vec::new();
+            let mut nearby_plant_indices = Vec::new();
+
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let nx = gx + dx;
+                    let ny = gy + dy;
+                    if nx >= 0 && nx < GRID_WIDTH as i32 && ny >= 0 && ny < GRID_WIDTH as i32 {
+                        let cell_idx = (ny * GRID_WIDTH as i32 + nx) as usize;
+                        nearby_animal_indices.extend(&self.animal_spatial_grid[cell_idx]);
+                        nearby_plant_indices.extend(&self.plant_spatial_grid[cell_idx]);
+                    }
+                }
+            }
+
+            let filtered_animals: Vec<_> = nearby_animal_indices.into_iter().filter(|&&idx| idx != i).map(|&idx| animal_snaps[idx]).collect();
+            let filtered_plants: Vec<_> = nearby_plant_indices.into_iter().map(|&idx| plant_snaps[idx]).collect();
+
             let tile = &self.tiles[world_to_tile_index(animal.position, self.id)];
-            let res = animal.update(tile.tile_type == TileType::Water, &plant_snaps, &animal_snaps, ctx.climate.temperature, ctx.climate.humidity, ctx.climate.wind_speed);
+            let res = animal.update(tile.tile_type == TileType::Water, &filtered_plants, &filtered_animals, ctx.climate.temperature, ctx.climate.humidity, ctx.climate.wind_speed);
             updates.push((animal, res));
         }
 
