@@ -192,21 +192,20 @@ impl World {
         self.stats.total_deaths += died_count;
 
         for mut animal in animals_to_spawn {
+            let coords = world_to_chunk_coords(animal.position);
             if animal.age == 0 {
                 self.stats.total_births += 1;
                 let spec_id = self.register_or_match_species(&mut animal.genome, animal.animal_type);
                 animal.genome.species_id = spec_id;
                 if let Some(spec) = self.evolution_manager.species_registry.get_mut(&spec_id) { spec.total_born += 1; }
             }
-            let coords = world_to_chunk_coords(animal.position);
-            self.add_chunk(coords.0, coords.1);
-            if let Some(chunk) = self.chunks.get_mut(&coords) { chunk.animals.push(animal); }
+            self.chunks.entry(coords).or_insert_with(|| Chunk::new(coords)).animals.push(animal);
         }
 
         for (pos, ptype, genome) in seeds_to_spawn {
             let coords = world_to_chunk_coords(pos);
-            self.add_chunk(coords.0, coords.1);
-            if let Some(chunk) = self.chunks.get_mut(&coords) {
+            let chunk = self.chunks.entry(coords).or_insert_with(|| Chunk::new(coords));
+            {
                 let tile_idx = world_to_tile_index(pos, coords);
                 let tile = &chunk.tiles[tile_idx];
                 let can_grow = match ptype {
