@@ -9,6 +9,12 @@ pub struct EvolutionManager {
     pub next_species_id: u32,
 }
 
+impl Default for EvolutionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EvolutionManager {
     pub fn new() -> Self {
         Self {

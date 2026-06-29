@@ -110,7 +110,7 @@ impl LifeSimApp {
             Tool::SpawnInsect   => { self.world.spawn_animal(AnimalType::Insect, world_pos, None); }
             Tool::SpawnFish     => { self.world.spawn_animal(AnimalType::Fish, world_pos, None); }
             Tool::AddSoilEnergy => {
-                for (_, chunk) in &mut self.world.chunks {
+                for chunk in self.world.chunks.values_mut() {
                     let chunk_left = chunk.id.0 as f32 * CHUNK_WORLD_SIZE;
                     let chunk_top  = chunk.id.1 as f32 * CHUNK_WORLD_SIZE;
                     for ty in 0..CHUNK_SIZE {
@@ -126,7 +126,7 @@ impl LifeSimApp {
                 }
             }
             Tool::AddMoisture => {
-                for (_, chunk) in &mut self.world.chunks {
+                for chunk in self.world.chunks.values_mut() {
                     let chunk_left = chunk.id.0 as f32 * CHUNK_WORLD_SIZE;
                     let chunk_top  = chunk.id.1 as f32 * CHUNK_WORLD_SIZE;
                     for ty in 0..CHUNK_SIZE {

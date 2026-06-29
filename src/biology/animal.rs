@@ -2,7 +2,6 @@
 use serde::{Deserialize, Serialize};
 use super::genome::Genome;
 use glam::Vec2;
-use rand::Rng;
 use crate::engine::config::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -100,7 +99,7 @@ impl Animal {
         &mut self,
         is_water_tile: bool,
         plants: &[(usize, Vec2, f32, bool)],
-        nearby_animals: &[(u64, Vec2, AnimalType, f32, f32, f32, f32, u32, f32)],
+        nearby_animals: &[AnimalSnapshot],
         temperature: f32,
         humidity: f32,
         wind_speed: f32,
@@ -196,7 +195,7 @@ impl Animal {
     fn collect_sensory_data(
         &self,
         plants: &[(usize, Vec2, f32, bool)],
-        nearby_animals: &[(u64, Vec2, AnimalType, f32, f32, f32, f32, u32, f32)],
+        nearby_animals: &[AnimalSnapshot],
     ) -> SensoryData {
         let vision = self.genome.vision_range;
 
@@ -305,3 +304,5 @@ pub struct AnimalUpdateActions {
     pub want_to_eat_plant_idx: Option<usize>,
     pub want_to_attack: Option<u64>,
 }
+
+pub type AnimalSnapshot = (u64, Vec2, AnimalType, f32, f32, f32, f32, u32, f32);

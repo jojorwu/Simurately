@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use glam::Vec2;
 use rand::Rng;
 
-use crate::biology::animal::{Animal, AnimalUpdateResult};
+use crate::biology::animal::{Animal, AnimalUpdateResult, AnimalSnapshot};
 use crate::biology::plant::Plant;
 use crate::biology::genome::Genome;
 use crate::engine::tile::{Tile, TileType};
@@ -20,7 +20,7 @@ pub fn update_animals(
     ctx: &TickContext,
     result: &mut ChunkTickResult
 ) {
-    let animal_snaps: Vec<_> = animals.iter().map(|a| (a.id, a.position, a.animal_type, a.genome.size, a.genome.diet, a.genome.aggression, a.energy, a.genome.species_id, a.genome.aquatic_adaptation)).collect();
+    let animal_snaps: Vec<AnimalSnapshot> = animals.iter().map(|a| (a.id, a.position, a.animal_type, a.genome.size, a.genome.diet, a.genome.aggression, a.energy, a.genome.species_id, a.genome.aquatic_adaptation)).collect();
     let plant_snaps: Vec<_> = plants.iter().enumerate().map(|(i, p)| (i, p.position, p.energy, p.is_poisonous)).collect();
 
     let chunk_left = chunk_id.0 as f32 * CHUNK_WORLD_SIZE;
@@ -54,7 +54,7 @@ pub fn update_animals(
         updates.push((animal, res));
     }
 
-    let mut eaten_ids = HashSet::new();
+    let eaten_ids = HashSet::new();
     apply_animal_actions(updates, plants, eaten_ids, chunk_id, ctx, result, animals);
 }
 
@@ -68,16 +68,16 @@ fn apply_animal_actions(
     animals_vec: &mut Vec<Animal>
 ) {
     let mut dead_plants = HashSet::new();
-    for i in 0..updates.len() {
-        if updates[i].1.died { continue; }
-        if let Some(p_idx) = updates[i].1.want_to_eat_plant_idx {
+    for (animal, res) in &mut updates {
+        if res.died { continue; }
+        if let Some(p_idx) = res.want_to_eat_plant_idx {
             if p_idx < plants.len() && !dead_plants.contains(&p_idx) {
                 let plant = &mut plants[p_idx];
-                let eat_amount = (plant.energy * 0.5).min(plant.nutritional_value() + updates[i].0.genome.size * 1.5);
+                let eat_amount = (plant.energy * 0.5).min(plant.nutritional_value() + animal.genome.size * 1.5);
                 plant.energy -= eat_amount;
-                let digestion = (1.0 - updates[i].0.genome.diet).clamp(0.2, 1.0) * updates[i].0.genome.digestion_efficiency;
-                if plant.is_poisonous { updates[i].0.health -= 10.0 * (1.0 - updates[i].0.genome.digestion_efficiency); }
-                else { updates[i].0.energy = (updates[i].0.energy + eat_amount * digestion).min(updates[i].0.genome.reproduction_threshold * 3.0); }
+                let digestion = (1.0 - animal.genome.diet).clamp(0.2, 1.0) * animal.genome.digestion_efficiency;
+                if plant.is_poisonous { animal.health -= 10.0 * (1.0 - animal.genome.digestion_efficiency); }
+                else { animal.energy = (animal.energy + eat_amount * digestion).min(animal.genome.reproduction_threshold * 3.0); }
                 if plant.energy <= 0.0 { dead_plants.insert(p_idx); }
             }
         }

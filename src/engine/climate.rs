@@ -75,6 +75,12 @@ pub struct Climate {
     pub wildfire_pos: Option<Vec2>,
 }
 
+impl Default for Climate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Climate {
     pub fn new() -> Self {
         Self {
@@ -212,7 +218,7 @@ impl Climate {
                 *age = age.saturating_sub(1);
             }
         }
-        if self.lightning_strike.as_ref().map_or(false, |(_, age)| *age == 0) {
+        if self.lightning_strike.as_ref().is_some_and(|(_, age)| *age == 0) {
             self.lightning_strike = None;
         }
 
