@@ -1,6 +1,7 @@
 pub mod animal;
 pub mod plant;
 pub mod genome;
+pub mod ai;
 
 use glam::Vec2;
 use self::genome::Genome;
