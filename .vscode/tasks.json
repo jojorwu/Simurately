@@ -19,6 +19,14 @@
             "label": "rust: cargo run"
         },
         {
+            "type": "shell",
+            "command": "./run.sh",
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "label": "run.sh (Release run)"
+        },
+        {
             "type": "cargo",
             "command": "test",
             "problemMatcher": [

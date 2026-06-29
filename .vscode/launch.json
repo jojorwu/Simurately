@@ -37,6 +37,15 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Run (via run.sh)",
+            "preLaunchTask": "run.sh (Release run)",
+            "program": "${workspaceFolder}/target/release/life_sim",
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
