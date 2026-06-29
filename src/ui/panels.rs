@@ -1,8 +1,8 @@
 use eframe::egui;
 
-use crate::render::app::LifeSimApp;
-use crate::render::tool::Tool;
-use crate::render::tabs::{
+use crate::ui::app::LifeSimApp;
+use crate::ui::tool::Tool;
+use crate::ui::tabs::{
     BottomTab, draw_inspector, draw_species_tab, draw_populations_tab,
     draw_climate_tab, draw_events_tab,
 };

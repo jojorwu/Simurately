@@ -90,7 +90,7 @@ impl Chunk {
         next_entity_id: &AtomicU64,
         climate: &Climate,
         tick_count: u64,
-        bucket_index: usize,
+        _bucket_index: usize,
     ) -> ChunkTickResult {
 
         let mut migrated_animals: Vec<Animal> = Vec::new();
